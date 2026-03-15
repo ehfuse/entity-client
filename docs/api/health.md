@@ -9,9 +9,15 @@
 ```json
 {
     "ok": true,
-    "packet_encryption": false
+    "packet_encryption": true,
+    "packet_mode": "anonymous",
+    "packet_token": "anon.v1...."
 }
 ```
+
+- `packet_encryption`: 서버가 패킷 암호화를 요구하는지 여부
+- `packet_mode`: `"jwt"` (JWT 인증) 또는 `"anonymous"` (익명 토큰)
+- `packet_token`: `anonymous` 모드일 때 포함. `checkHealth()` 호출 시 클라이언트 내부 `anonymousPacketToken`에 **자동 저장**됨
 
 ## 자동 초기화 (권장)
 

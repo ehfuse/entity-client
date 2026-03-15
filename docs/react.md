@@ -37,7 +37,7 @@ const { client, submit, del } = useEntityServer({
 });
 
 // 인증
-await client.login({ email: "hong@example.com", password: "pw" });
+await client.login("hong@example.com", "pw");
 await client.logout();
 
 // 트랜잭션

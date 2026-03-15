@@ -32,3 +32,14 @@ React Hook:
 ```ts
 import { useEntityServer } from "entity-server-client/react";
 ```
+
+패킷 프로토콜 코어 (SDK 없이 암복호만 필요할 때):
+
+```ts
+import {
+    derivePacketKey,
+    packetMagicLenFromKey,
+    encryptPacket,
+    decryptPacket,
+} from "entity-server-client/packet";
+```

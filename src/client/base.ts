@@ -177,6 +177,11 @@ export class EntityServerClientBase {
         };
     }
 
+    /**
+     * 임의 경로에 JSON 요청을 보냅니다. 응답이 JSON이면 파싱, octet-stream이면 자동 복호화합니다.
+     * `ok` 필드를 강제하지 않아 go서버/앱서버 신규 라우트 등 자유 응답 포맷에 사용합니다.
+     * `encryptRequests: true`이면 요청 바디도 자동 암호화됩니다.
+     */
     requestJson<T>(
         method: string,
         path: string,
@@ -193,6 +198,44 @@ export class EntityServerClientBase {
             extraHeaders,
             false,
         );
+    }
+
+    /**
+     * 임의 경로에 요청을 보내고 바이너리(ArrayBuffer)를 반환합니다.
+     * 이미지, PDF, 압축 파일 등 바이너리 응답이 오는 엔드포인트에 사용합니다.
+     */
+    requestBinary(
+        method: string,
+        path: string,
+        body?: unknown,
+        withAuth = true,
+    ): Promise<ArrayBuffer> {
+        return this._requestBinary(method, path, body, withAuth);
+    }
+
+    /**
+     * multipart/form-data 요청을 보냅니다. 파일 업로드 등에 사용합니다.
+     * 응답은 JSON으로 파싱하여 반환합니다.
+     */
+    requestForm<T>(
+        method: string,
+        path: string,
+        form: FormData,
+        withAuth = true,
+    ): Promise<T> {
+        return this._requestForm<T>(method, path, form, withAuth);
+    }
+
+    /**
+     * multipart/form-data 요청을 보내고 바이너리(ArrayBuffer)를 반환합니다.
+     */
+    requestFormBinary(
+        method: string,
+        path: string,
+        form: FormData,
+        withAuth = true,
+    ): Promise<ArrayBuffer> {
+        return this._requestFormBinary(method, path, form, withAuth);
     }
 
     _request<T>(

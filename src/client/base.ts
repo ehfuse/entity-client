@@ -306,7 +306,7 @@ export class EntityServerClientBase {
             credentials: "include",
         });
 
-        const data = await res.json();
+        const data = (await res.json()) as { ok?: boolean; message?: string };
         if (!data.ok) {
             const err = new Error(
                 data.message ?? `EntityServer error (HTTP ${res.status})`,

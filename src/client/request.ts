@@ -106,7 +106,7 @@ export async function entityRequest<T>(
     const res = await fetch(baseUrl + path, {
         method,
         headers,
-        ...(fetchBody != null ? { body: fetchBody as BodyInit } : {}),
+        ...(fetchBody != null ? { body: fetchBody as RequestInit["body"] } : {}),
         credentials: "include",
     });
 
@@ -126,7 +126,7 @@ export async function entityRequest<T>(
         return (await res.text()) as T;
     }
 
-    const data = await res.json();
+    const data = (await res.json()) as { ok?: boolean; message?: string };
     if (requireOkShape && !data.ok) {
         const err = new Error(
             data.message ?? `EntityServer error (HTTP ${res.status})`,

@@ -1,4 +1,4 @@
-import type { GConstructor, EntityServerClientBase } from "../client/base";
+import type { GConstructor, EntityServerClientBase } from "../client/base.js";
 
 export function AuthMixin<TBase extends GConstructor<EntityServerClientBase>>(
     Base: TBase,

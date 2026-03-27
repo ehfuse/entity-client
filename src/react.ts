@@ -1,1 +1,1 @@
-export * from "./hooks/useEntityServer";
+export * from "./hooks/useEntityServer.js";

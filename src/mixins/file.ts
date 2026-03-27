@@ -1,5 +1,5 @@
-import type { FileMeta, FileUploadOptions } from "../types";
-import type { GConstructor, EntityServerClientBase } from "../client/base";
+import type { FileMeta, FileUploadOptions } from "../types.js";
+import type { GConstructor, EntityServerClientBase } from "../client/base.js";
 
 export function FileMixin<TBase extends GConstructor<EntityServerClientBase>>(
     Base: TBase,

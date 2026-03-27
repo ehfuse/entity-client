@@ -11,13 +11,13 @@
  *   src/mixins/file.ts      — 파일 스토리지
  *   src/mixins/utils.ts     — QR코드/바코드/PDF변환
  */
-import { EntityServerClientBase } from "./client/base";
-import { AuthMixin } from "./mixins/auth";
-import { EntityMixin } from "./mixins/entity";
-import { PushMixin } from "./mixins/push";
-import { SmtpMixin } from "./mixins/smtp";
-import { FileMixin } from "./mixins/file";
-import { UtilsMixin } from "./mixins/utils";
+import { EntityServerClientBase } from "./client/base.js";
+import { AuthMixin } from "./mixins/auth.js";
+import { EntityMixin } from "./mixins/entity.js";
+import { PushMixin } from "./mixins/push.js";
+import { SmtpMixin } from "./mixins/smtp.js";
+import { FileMixin } from "./mixins/file.js";
+import { UtilsMixin } from "./mixins/utils.js";
 
 // ─── Composed class ───────────────────────────────────────────────────────────
 

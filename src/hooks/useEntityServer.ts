@@ -5,7 +5,7 @@ import {
     type EntityListParams,
     type EntityQueryRequest,
     type EntityServerClientOptions,
-} from "../index";
+} from "../index.js";
 
 export interface UseEntityServerOptions extends EntityServerClientOptions {
     singleton?: boolean;

@@ -1,6 +1,6 @@
 {
     "name": "entity-server-client",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "license": "MIT",
     "type": "module",
     "publishConfig": {
@@ -27,7 +27,7 @@
         }
     },
     "scripts": {
-        "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc --declaration --emitDeclarationOnly && node build.mjs",
+        "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc --project tsconfig.json && node build.mjs",
         "test": "npm run build && node --test tests/**/*.test.mjs",
         "prepublishOnly": "npm run build"
     },

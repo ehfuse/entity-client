@@ -46,7 +46,12 @@ test("unsafe request refreshes csrf token before first send", async () => {
             csrfEnabled: true,
         });
 
-        const result = await client.requestJson("POST", "/v1/test", { ok: true }, false);
+        const result = await client.requestJson(
+            "POST",
+            "/v1/test",
+            { ok: true },
+            false,
+        );
         assert.deepEqual(result, { ok: true, data: { saved: true } });
         assert.equal(calls.length, 2);
     } finally {
@@ -99,7 +104,12 @@ test("unsafe request retries once after csrf validation failure", async () => {
             csrfToken: "csrf-stale",
         });
 
-        const result = await client.requestJson("POST", "/v1/test", { ok: true }, false);
+        const result = await client.requestJson(
+            "POST",
+            "/v1/test",
+            { ok: true },
+            false,
+        );
         assert.deepEqual(result, { ok: true, data: { retried: true } });
         assert.deepEqual(seenHeaders, ["csrf-stale", "csrf-fresh"]);
         assert.equal(step, 2);

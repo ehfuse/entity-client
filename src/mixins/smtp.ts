@@ -1,5 +1,5 @@
-import type { SmtpSendRequest } from "../types";
-import type { GConstructor, EntityServerClientBase } from "../client/base";
+import type { SmtpSendRequest } from "../types.js";
+import type { GConstructor, EntityServerClientBase } from "../client/base.js";
 
 export function SmtpMixin<TBase extends GConstructor<EntityServerClientBase>>(
     Base: TBase,

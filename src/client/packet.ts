@@ -2,7 +2,7 @@ import {
     derivePacketKey as derivePacketKeyCore,
     encryptPacket as encryptPacketCore,
     decryptPacket as decryptPacketCore,
-} from "../packet";
+} from "../packet.js";
 
 /**
  * 패킷 암호화 키를 유도합니다.

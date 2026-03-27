@@ -1,5 +1,9 @@
-import type { QRCodeOptions, BarcodeOptions, Pdf2PngOptions } from "../types";
-import type { GConstructor, EntityServerClientBase } from "../client/base";
+import type {
+    QRCodeOptions,
+    BarcodeOptions,
+    Pdf2PngOptions,
+} from "../types.js";
+import type { GConstructor, EntityServerClientBase } from "../client/base.js";
 
 export function UtilsMixin<TBase extends GConstructor<EntityServerClientBase>>(
     Base: TBase,

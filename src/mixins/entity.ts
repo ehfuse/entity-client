@@ -3,9 +3,9 @@ import type {
     EntityListParams,
     EntityListResult,
     EntityQueryRequest,
-} from "../types";
-import { buildQuery } from "../client/utils";
-import type { GConstructor, EntityServerClientBase } from "../client/base";
+} from "../types.js";
+import { buildQuery } from "../client/utils.js";
+import type { GConstructor, EntityServerClientBase } from "../client/base.js";
 
 export function EntityMixin<TBase extends GConstructor<EntityServerClientBase>>(
     Base: TBase,

@@ -2,8 +2,8 @@ import type {
     EntityListParams,
     EntityListResult,
     RegisterPushDeviceOptions,
-} from "../types";
-import type { GConstructor, EntityServerClientBase } from "../client/base";
+} from "../types.js";
+import type { GConstructor, EntityServerClientBase } from "../client/base.js";
 
 // entity submit을 가진 base 타입 (EntityMixin 적용 후)
 type WithSubmit = EntityServerClientBase & {

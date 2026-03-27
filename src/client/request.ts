@@ -1,5 +1,5 @@
-import { derivePacketKey, encryptPacket, decryptPacket } from "./packet";
-import { buildHmacHeaders } from "./hmac";
+import { derivePacketKey, encryptPacket, decryptPacket } from "./packet.js";
+import { buildHmacHeaders } from "./hmac.js";
 
 export interface RequestOptions {
     baseUrl: string;
@@ -27,7 +27,10 @@ function isCsrfError(status: number, message: string): boolean {
         return true;
     }
 
-    return /csrf/i.test(message) && /expired|token validation failed/i.test(message);
+    return (
+        /csrf/i.test(message) &&
+        /expired|token validation failed/i.test(message)
+    );
 }
 
 async function readErrorMessage(res: Response): Promise<string> {
@@ -103,7 +106,9 @@ export async function entityRequest<T>(
         }
     }
 
-    const buildHeaders = (resolvedCsrfToken: string): Record<string, string> => {
+    const buildHeaders = (
+        resolvedCsrfToken: string,
+    ): Record<string, string> => {
         const headers: Record<string, string> = {
             "Content-Type": requestContentType,
             ...extraHeaders,
@@ -150,7 +155,11 @@ export async function entityRequest<T>(
 
     if (!res.ok) {
         const message = await readErrorMessage(res.clone());
-        if (shouldUseCsrf && refreshCsrfToken && isCsrfError(res.status, message)) {
+        if (
+            shouldUseCsrf &&
+            refreshCsrfToken &&
+            isCsrfError(res.status, message)
+        ) {
             csrfToken = await refreshCsrfToken();
             res = await executeRequest(csrfToken);
         } else {

@@ -1,10 +1,10 @@
 import type {
     EntityServerClientHealthCsrf,
     EntityServerClientOptions,
-} from "../types";
-import { readEnv } from "./utils";
-import { derivePacketKey, parseRequestBody } from "./packet";
-import { entityRequest, type RequestOptions } from "./request";
+} from "../types.js";
+import { readEnv } from "./utils.js";
+import { derivePacketKey, parseRequestBody } from "./packet.js";
+import { entityRequest, type RequestOptions } from "./request.js";
 
 // mixin 헬퍼 타입
 export type GConstructor<T = object> = new (...args: any[]) => T;
@@ -79,7 +79,8 @@ export class EntityServerClientBase {
                 this.stopCsrfRefresh();
             }
         }
-        if (typeof options.csrfToken === "string") this.csrfToken = options.csrfToken;
+        if (typeof options.csrfToken === "string")
+            this.csrfToken = options.csrfToken;
         if (typeof options.csrfHeaderName === "string") {
             this.csrfHeaderName = options.csrfHeaderName;
         }
@@ -206,7 +207,10 @@ export class EntityServerClientBase {
             return;
         }
 
-        const delayMs = Math.max((expiresIn - this.csrfRefreshBuffer) * 1000, 0);
+        const delayMs = Math.max(
+            (expiresIn - this.csrfRefreshBuffer) * 1000,
+            0,
+        );
         this._csrfRefreshTimer = setTimeout(() => {
             void this.refreshCsrfToken().catch(() => {
                 this._clearCsrfRefreshTimer();
@@ -221,10 +225,13 @@ export class EntityServerClientBase {
 
         if (!this._csrfRefreshPromise) {
             this._csrfRefreshPromise = (async () => {
-                const res = await fetch(`${this.baseUrl}${this.csrfRefreshPath}`, {
-                    method: "GET",
-                    credentials: "include",
-                });
+                const res = await fetch(
+                    `${this.baseUrl}${this.csrfRefreshPath}`,
+                    {
+                        method: "GET",
+                        credentials: "include",
+                    },
+                );
 
                 if (!res.ok) {
                     const message = await res.text().catch(() => "");
@@ -239,7 +246,7 @@ export class EntityServerClientBase {
                     | null;
                 const csrf = (
                     payload && typeof payload === "object" && "data" in payload
-                        ? payload.data ?? null
+                        ? (payload.data ?? null)
                         : payload
                 ) as EntityServerClientHealthCsrf | null;
 

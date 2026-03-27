@@ -1,6 +1,6 @@
-export * from "./types";
-export * from "./EntityServerClient";
+export * from "./types.js";
+export * from "./EntityServerClient.js";
 
-import { EntityServerClient } from "./EntityServerClient";
+import { EntityServerClient } from "./EntityServerClient.js";
 
 export const entityServer = new EntityServerClient();

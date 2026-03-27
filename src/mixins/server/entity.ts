@@ -3,9 +3,12 @@ import type {
     EntityListParams,
     EntityListResult,
     EntityQueryRequest,
-} from "../types.js";
-import { buildQuery } from "../client/utils.js";
-import type { GConstructor, EntityServerClientBase } from "../client/base.js";
+} from "../../types.js";
+import { buildQuery } from "../../client/utils.js";
+import type {
+    GConstructor,
+    EntityServerClientBase,
+} from "../../client/base.js";
 
 export function EntityMixin<TBase extends GConstructor<EntityServerClientBase>>(
     Base: TBase,
@@ -57,6 +60,19 @@ export function EntityMixin<TBase extends GConstructor<EntityServerClientBase>>(
         }
 
         // ─── 엔티티 CRUD ──────────────────────────────────────────────────────
+
+        /** 엔티티 설정 메타데이터를 조회합니다. */
+        meta<T = unknown>(entity: string): Promise<{ ok: boolean; data: T }> {
+            return this._request("POST", `/v1/entity/${entity}/meta`, {});
+        }
+
+        /** 엔티티 데이터를 저장 없이 검증합니다. */
+        validate<T = unknown>(
+            entity: string,
+            data: Record<string, unknown>,
+        ): Promise<T> {
+            return this.http.post(`/v1/entity/${entity}/validate`, data);
+        }
 
         /** 시퀀스 ID로 엔티티 단건을 조회합니다. */
         get<T = unknown>(

@@ -325,26 +325,97 @@ export class EntityServerClientBase {
     }
 
     /**
-     * 임의 경로에 JSON 요청을 보냅니다. 응답이 JSON이면 파싱, octet-stream이면 자동 복호화합니다.
-     * `ok` 필드를 강제하지 않아 go서버/앱서버 신규 라우트 등 자유 응답 포맷에 사용합니다.
-     * `encryptRequests: true`이면 요청 바디도 자동 암호화됩니다.
+     * 커스텀 라우트 직접 호출용 HTTP 네임스페이스.
+     * 인증·암호화·HMAC 등 SDK 옵션이 그대로 적용됩니다.
+     *
+     * @example
+     * const res = await client.http.get<{ version: string }>("/api/v1/status", false);
+     * const res = await client.http.post<MyResponse>("/api/v1/custom", { key: "value" });
      */
-    requestJson<T>(
-        method: string,
-        path: string,
-        body?: unknown,
-        withAuth = true,
-        extraHeaders?: Record<string, string>,
-    ): Promise<T> {
-        return entityRequest<T>(
-            this._reqOpts,
-            method,
-            path,
-            body,
-            withAuth,
-            extraHeaders,
-            false,
-        );
+    get http() {
+        // eslint-disable-next-line @typescript-eslint/no-this-alias
+        const self = this;
+        return {
+            get<T>(
+                path: string,
+                withAuth = true,
+                extraHeaders?: Record<string, string>,
+            ): Promise<T> {
+                return entityRequest<T>(
+                    self._reqOpts,
+                    "GET",
+                    path,
+                    undefined,
+                    withAuth,
+                    extraHeaders,
+                    false,
+                );
+            },
+            post<T>(
+                path: string,
+                body?: unknown,
+                withAuth = true,
+                extraHeaders?: Record<string, string>,
+            ): Promise<T> {
+                return entityRequest<T>(
+                    self._reqOpts,
+                    "POST",
+                    path,
+                    body,
+                    withAuth,
+                    extraHeaders,
+                    false,
+                );
+            },
+            put<T>(
+                path: string,
+                body?: unknown,
+                withAuth = true,
+                extraHeaders?: Record<string, string>,
+            ): Promise<T> {
+                return entityRequest<T>(
+                    self._reqOpts,
+                    "PUT",
+                    path,
+                    body,
+                    withAuth,
+                    extraHeaders,
+                    false,
+                );
+            },
+            patch<T>(
+                path: string,
+                body?: unknown,
+                withAuth = true,
+                extraHeaders?: Record<string, string>,
+            ): Promise<T> {
+                return entityRequest<T>(
+                    self._reqOpts,
+                    "PATCH",
+                    path,
+                    body,
+                    withAuth,
+                    extraHeaders,
+                    false,
+                );
+            },
+            delete<T>(
+                path: string,
+                body?: unknown,
+                withAuth = true,
+                extraHeaders?: Record<string, string>,
+            ): Promise<T> {
+                return entityRequest<T>(
+                    self._reqOpts,
+                    "DELETE",
+                    path,
+                    body,
+                    withAuth,
+                    extraHeaders,
+                    false,
+                );
+            },
+        };
     }
 
     /**

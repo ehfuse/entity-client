@@ -1,5 +1,5 @@
-import type { FileMeta, FileUploadOptions } from "../types.js";
-import type { GConstructor, EntityServerClientBase } from "../client/base.js";
+import type { FileMeta, FileUploadOptions } from "../../types.js";
+import type { GConstructor, EntityServerClientBase } from "../../client/base.js";
 
 export function FileMixin<TBase extends GConstructor<EntityServerClientBase>>(
     Base: TBase,
@@ -89,6 +89,12 @@ export function FileMixin<TBase extends GConstructor<EntityServerClientBase>>(
         /** 임시 파일 접근 토큰을 발급합니다. */
         fileToken(uuid: string): Promise<{ ok: boolean; token: string }> {
             return this._request("POST", `/v1/files/token/${uuid}`, {});
+        }
+
+        /** 파일 인라인 뷰/다운로드 URL을 반환합니다. */
+        fileViewUrl(uuid: string, opts: { download?: boolean } = {}): string {
+            const qs = opts.download ? "?download=true" : "";
+            return `${this.baseUrl}/v1/files/${uuid}${qs}`;
         }
 
         /** 파일 인라인 뷰 URL을 반환합니다. (fetch 없음, URL 조합만) */

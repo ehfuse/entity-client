@@ -5,7 +5,7 @@
 
 ---
 
-## `requestJson<T>(method, path, body?, withAuth?, extraHeaders?)`
+## `client.http` 네임스페이스
 
 JSON 요청·응답의 범용 메서드입니다.
 
@@ -14,35 +14,50 @@ JSON 요청·응답의 범용 메서드입니다.
 - `ok` 필드 강제 없음 — go서버처럼 자유 응답 포맷을 그대로 반환합니다.
 - `encryptRequests: true`이면 요청 바디도 자동 암호화됩니다.
 
+### `client.http.get<T>(path, withAuth?, extraHeaders?)`
+
 | 파라미터       | 타입                     | 기본값 | 설명                      |
 | -------------- | ------------------------ | ------ | ------------------------- |
-| `method`       | `string`                 |        | `"GET"`, `"POST"` 등      |
 | `path`         | `string`                 |        | `/api/v1/...` 형태의 경로 |
-| `body`         | `unknown`                | —      | 요청 바디 (GET이면 생략)  |
+| `withAuth`     | `boolean`                | `true` | `Authorization` 헤더 포함 |
+| `extraHeaders` | `Record<string, string>` | —      | 추가 헤더                 |
+
+### `client.http.post<T>(path, body?, withAuth?, extraHeaders?)`
+
+### `client.http.put<T>(path, body?, withAuth?, extraHeaders?)`
+
+### `client.http.patch<T>(path, body?, withAuth?, extraHeaders?)`
+
+### `client.http.delete<T>(path, body?, withAuth?, extraHeaders?)`
+
+| 파라미터       | 타입                     | 기본값 | 설명                      |
+| -------------- | ------------------------ | ------ | ------------------------- |
+| `path`         | `string`                 |        | `/api/v1/...` 형태의 경로 |
+| `body`         | `unknown`                | —      | 요청 바디                 |
 | `withAuth`     | `boolean`                | `true` | `Authorization` 헤더 포함 |
 | `extraHeaders` | `Record<string, string>` | —      | 추가 헤더                 |
 
 ```ts
 // GET — 인증 없이
-const res = await client.requestJson<{ version: string }>(
-    "GET",
-    "/api/v1/status",
-    undefined,
-    false,
-);
+const res = await client.http.get<{ version: string }>("/api/v1/status", false);
 console.log(res.version);
 
 // POST — 인증 포함, 암호화 자동 적용
-const res = await client.requestJson<{ distance_nm: number }>(
-    "POST",
+const res = await client.http.post<{ distance_nm: number }>(
     "/api/v1/distance-server/route",
     { from: [37.5665, 126.978], to: [35.1796, 129.0756] },
 );
 console.log(res.distance_nm);
 
+// PUT / PATCH
+await client.http.put("/api/v1/custom/resource/1", { name: "updated" });
+await client.http.patch("/api/v1/custom/resource/1", { status: "active" });
+
+// DELETE
+await client.http.delete("/api/v1/custom/resource/1");
+
 // 추가 헤더
-const res = await client.requestJson<MyResponse>(
-    "POST",
+const res = await client.http.post<MyResponse>(
     "/api/v1/custom/endpoint",
     { key: "value" },
     true,

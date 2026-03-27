@@ -1,8 +1,16 @@
 {
-    "name": "entity-server-client",
+    "name": "entity-client",
     "version": "1.0.7",
     "license": "MIT",
     "type": "module",
+    "homepage": "https://github.com/ehfuse/entity-client",
+    "bugs": {
+        "url": "https://github.com/ehfuse/entity-client/issues"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/ehfuse/entity-client.git"
+    },
     "publishConfig": {
         "access": "public"
     },

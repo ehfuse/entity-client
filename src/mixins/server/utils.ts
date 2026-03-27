@@ -2,13 +2,50 @@ import type {
     QRCodeOptions,
     BarcodeOptions,
     Pdf2PngOptions,
-} from "../types.js";
-import type { GConstructor, EntityServerClientBase } from "../client/base.js";
+} from "../../types.js";
+import type { GConstructor, EntityServerClientBase } from "../../client/base.js";
 
 export function UtilsMixin<TBase extends GConstructor<EntityServerClientBase>>(
     Base: TBase,
 ) {
     return class UtilsMixinClass extends Base {
+        addressSido<T = unknown>(): Promise<T> {
+            return this.http.get(
+                "/v1/utils/address/sido",
+                false,
+            );
+        }
+
+        addressSigungu<T = unknown>(query: { sido: string }): Promise<T> {
+            const qs = new URLSearchParams({ sido: query.sido }).toString();
+            return this.http.get(
+                `/v1/utils/address/sigungu?${qs}`,
+                false,
+            );
+        }
+
+        addressDong<T = unknown>(query: {
+            sido: string;
+            sigungu: string;
+        }): Promise<T> {
+            const qs = new URLSearchParams({
+                sido: query.sido,
+                sigungu: query.sigungu,
+            }).toString();
+            return this.http.get(
+                `/v1/utils/address/dong?${qs}`,
+                false,
+            );
+        }
+
+        addressClean<T = unknown>(query: { q: string }): Promise<T> {
+            const qs = new URLSearchParams({ q: query.q }).toString();
+            return this.http.get(
+                `/v1/utils/address/clean?${qs}`,
+                false,
+            );
+        }
+
         // ─── Utils (QR / 바코드) ──────────────────────────────────────────────
 
         /**
@@ -105,6 +142,49 @@ export function UtilsMixin<TBase extends GConstructor<EntityServerClientBase>>(
             const qs = params.toString();
             const path = "/v1/utils/pdf2png" + (qs ? `?${qs}` : "");
             return this._requestFormBinary("POST", path, form);
+        }
+
+        pdf2pngByFileSeq(
+            fileSeq: number,
+            opts: Pdf2PngOptions = {},
+        ): Promise<ArrayBuffer> {
+            return this.requestBinary(
+                "POST",
+                `/v1/utils/pdf2png/${fileSeq}`,
+                opts,
+            );
+        }
+
+        pdf2jpg(
+            pdfData: ArrayBuffer | Uint8Array<ArrayBuffer>,
+            opts: Pdf2PngOptions = {},
+        ): Promise<ArrayBuffer> {
+            const form = new FormData();
+            form.append(
+                "file",
+                new Blob([pdfData], { type: "application/pdf" }),
+                "document.pdf",
+            );
+            const params = new URLSearchParams();
+            if (opts.dpi != null) params.set("dpi", String(opts.dpi));
+            if (opts.firstPage != null)
+                params.set("first_page", String(opts.firstPage));
+            if (opts.lastPage != null)
+                params.set("last_page", String(opts.lastPage));
+            const qs = params.toString();
+            const path = "/v1/utils/pdf2jpg" + (qs ? `?${qs}` : "");
+            return this._requestFormBinary("POST", path, form);
+        }
+
+        pdf2jpgByFileSeq(
+            fileSeq: number,
+            opts: Pdf2PngOptions = {},
+        ): Promise<ArrayBuffer> {
+            return this.requestBinary(
+                "POST",
+                `/v1/utils/pdf2jpg/${fileSeq}`,
+                opts,
+            );
         }
     };
 }

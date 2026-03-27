@@ -1,4 +1,7 @@
-import type { GConstructor, EntityServerClientBase } from "../client/base.js";
+import type {
+    GConstructor,
+    EntityServerClientBase,
+} from "../../client/base.js";
 
 export function AuthMixin<TBase extends GConstructor<EntityServerClientBase>>(
     Base: TBase,
@@ -21,7 +24,7 @@ export function AuthMixin<TBase extends GConstructor<EntityServerClientBase>>(
             packet_encryption?: boolean;
             packet_mode?: string;
             packet_token?: string;
-            csrf?: import("../types").EntityServerClientHealthCsrf;
+            csrf?: import("../../types").EntityServerClientHealthCsrf;
         }> {
             const res = await fetch(`${this.baseUrl}/v1/health`, {
                 signal: AbortSignal.timeout(3000),
@@ -32,7 +35,7 @@ export function AuthMixin<TBase extends GConstructor<EntityServerClientBase>>(
                 packet_encryption?: boolean;
                 packet_mode?: string;
                 packet_token?: string;
-                csrf?: import("../types").EntityServerClientHealthCsrf;
+                csrf?: import("../../types").EntityServerClientHealthCsrf;
             };
             if (data.packet_encryption) this.encryptRequests = true;
             if (typeof data.packet_token === "string") {
@@ -124,23 +127,6 @@ export function AuthMixin<TBase extends GConstructor<EntityServerClientBase>>(
                 "/v1/auth/withdraw",
                 passwd ? { passwd } : {},
             );
-        }
-
-        /**
-         * 휴면 계정을 재활성화합니다.
-         * 비밀번호 또는 OAuth(provider + code)로 본인 확인합니다.
-         */
-        reactivate(params: {
-            email: string;
-            passwd?: string;
-            provider?: string;
-            code?: string;
-        }): Promise<{
-            access_token: string;
-            refresh_token: string;
-            expires_in: number;
-        }> {
-            return this._request("POST", "/v1/auth/reactivate", params, false);
         }
     };
 }

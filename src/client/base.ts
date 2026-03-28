@@ -1,7 +1,4 @@
-import type {
-    EntityServerClientHealthCsrf,
-    EntityServerClientOptions,
-} from "../types.js";
+import type { EntityServerClientOptions } from "../types.js";
 import { readEnv } from "./utils.js";
 import { derivePacketKey, parseRequestBody } from "./packet.js";
 import { entityRequest, type RequestOptions } from "./request.js";
@@ -17,10 +14,10 @@ export class EntityServerClientBase {
     hmacSecret: string;
     encryptRequests: boolean;
     csrfEnabled: boolean;
-    csrfToken: string;
     csrfHeaderName: string;
-    csrfRefreshPath: string;
-    csrfRefreshBuffer: number;
+    csrfCookieName: string;
+    /** @internal health 재호출로 CSRF 쿠키 갱신 (AuthMixin에서 설정) */
+    _csrfRefresher: (() => Promise<void>) | null = null;
     activeTxId: string | null = null;
 
     // 세션 유지 관련
@@ -30,9 +27,8 @@ export class EntityServerClientBase {
     onSessionExpired?: (error: Error) => void;
     _sessionRefreshToken: string | null = null;
     _refreshTimer: ReturnType<typeof setTimeout> | null = null;
-    _csrfRefreshTimer: ReturnType<typeof setTimeout> | null = null;
-    _csrfRefreshPromise: Promise<string> | null = null;
-
+    _healthTickTimer: ReturnType<typeof setInterval> | null = null;
+    _healthTickPromise: Promise<unknown> | null = null;
     // ─── 초기화 & 설정 ────────────────────────────────────────────────────────
 
     /**
@@ -51,14 +47,16 @@ export class EntityServerClientBase {
         this.hmacSecret = options.hmacSecret ?? "";
         this.encryptRequests = options.encryptRequests ?? false;
         this.csrfEnabled = options.csrfEnabled ?? false;
-        this.csrfToken = options.csrfToken ?? "";
         this.csrfHeaderName = options.csrfHeaderName ?? "x-csrf-token";
-        this.csrfRefreshPath = options.csrfRefreshPath ?? "/v1/csrf-token";
-        this.csrfRefreshBuffer = options.csrfRefreshBuffer ?? 60;
+        this.csrfCookieName = options.csrfCookieName ?? "_csrf";
         this.keepSession = options.keepSession ?? false;
         this.refreshBuffer = options.refreshBuffer ?? 60;
         this.onTokenRefreshed = options.onTokenRefreshed;
         this.onSessionExpired = options.onSessionExpired;
+        if (typeof options.healthTickInterval === "number" && options.healthTickInterval > 0) {
+            // _csrfRefresher는 AuthMixin에서 설정되므로 다음 tick에 시작
+            Promise.resolve().then(() => this.startHealthTick(options.healthTickInterval));
+        }
     }
 
     /** baseUrl, token, encryptRequests 값을 런타임에 갱신합니다. */
@@ -74,21 +72,12 @@ export class EntityServerClientBase {
             this.encryptRequests = options.encryptRequests;
         if (typeof options.csrfEnabled === "boolean") {
             this.csrfEnabled = options.csrfEnabled;
-            if (!options.csrfEnabled) {
-                this.csrfToken = "";
-                this.stopCsrfRefresh();
-            }
         }
-        if (typeof options.csrfToken === "string")
-            this.csrfToken = options.csrfToken;
         if (typeof options.csrfHeaderName === "string") {
             this.csrfHeaderName = options.csrfHeaderName;
         }
-        if (typeof options.csrfRefreshPath === "string") {
-            this.csrfRefreshPath = options.csrfRefreshPath;
-        }
-        if (typeof options.csrfRefreshBuffer === "number") {
-            this.csrfRefreshBuffer = options.csrfRefreshBuffer;
+        if (typeof options.csrfCookieName === "string") {
+            this.csrfCookieName = options.csrfCookieName;
         }
         if (typeof options.apiKey === "string") this.apiKey = options.apiKey;
         if (typeof options.hmacSecret === "string")
@@ -101,6 +90,9 @@ export class EntityServerClientBase {
             this.onTokenRefreshed = options.onTokenRefreshed;
         if (options.onSessionExpired)
             this.onSessionExpired = options.onSessionExpired;
+        if (typeof options.healthTickInterval === "number" && options.healthTickInterval > 0) {
+            Promise.resolve().then(() => this.startHealthTick(options.healthTickInterval));
+        }
     }
 
     /** 인증 요청에 사용할 JWT Access Token을 설정합니다. */
@@ -128,16 +120,35 @@ export class EntityServerClientBase {
         this.encryptRequests = value;
     }
 
-    setCsrfToken(token: string): void {
-        this.csrfToken = token;
-    }
-
     setCsrfEnabled(enabled: boolean): void {
         this.csrfEnabled = enabled;
-        if (!enabled) {
-            this.csrfToken = "";
-            this.stopCsrfRefresh();
+    }
+
+    /**
+     * 주기적으로 health 체크를 실행합니다.
+     * CSRF 쿠키 갱신과 서버 상태 확인을 자동화합니다.
+     *
+     * @param intervalMs 호출 주기(ms). 기본값: 5분
+     */
+    startHealthTick(intervalMs: number = 5 * 60 * 1000): void {
+        this.stopHealthTick();
+        const tick = (): void => {
+            if (this._healthTickPromise) return;
+            this._healthTickPromise = (this._csrfRefresher ? this._csrfRefresher() : Promise.resolve())
+                .catch(() => {/* 네트워크 오류 무시 */})
+                .finally(() => { this._healthTickPromise = null; });
+        };
+        tick(); // 즉시 1회 실행
+        this._healthTickTimer = setInterval(tick, intervalMs);
+    }
+
+    /** health tick 타이머를 중지합니다. */
+    stopHealthTick(): void {
+        if (this._healthTickTimer !== null) {
+            clearInterval(this._healthTickTimer);
+            this._healthTickTimer = null;
         }
+        this._healthTickPromise = null;
     }
 
     // ─── 세션 유지 ────────────────────────────────────────────────────────────
@@ -189,100 +200,17 @@ export class EntityServerClientBase {
         this._sessionRefreshToken = null;
     }
 
-    _clearCsrfRefreshTimer(): void {
-        if (this._csrfRefreshTimer !== null) {
-            clearTimeout(this._csrfRefreshTimer);
-            this._csrfRefreshTimer = null;
+    _applyCsrfHealth(): void {
+        if (typeof document === "undefined") return;
+        for (const chunk of document.cookie.split(";")) {
+            const idx = chunk.indexOf("=");
+            if (idx < 0) continue;
+            if (chunk.substring(0, idx).trim() === this.csrfCookieName) {
+                this.csrfEnabled = !!chunk.substring(idx + 1).trim();
+                return;
+            }
         }
-    }
-
-    stopCsrfRefresh(): void {
-        this._clearCsrfRefreshTimer();
-        this._csrfRefreshPromise = null;
-    }
-
-    _scheduleCsrfRefresh(expiresIn: number): void {
-        this._clearCsrfRefreshTimer();
-        if (!this.csrfEnabled || !this.csrfRefreshPath) {
-            return;
-        }
-
-        const delayMs = Math.max(
-            (expiresIn - this.csrfRefreshBuffer) * 1000,
-            0,
-        );
-        this._csrfRefreshTimer = setTimeout(() => {
-            void this.refreshCsrfToken().catch(() => {
-                this._clearCsrfRefreshTimer();
-            });
-        }, delayMs);
-    }
-
-    async refreshCsrfToken(): Promise<string> {
-        if (!this.csrfEnabled || !this.csrfRefreshPath) {
-            return "";
-        }
-
-        if (!this._csrfRefreshPromise) {
-            this._csrfRefreshPromise = (async () => {
-                const res = await fetch(
-                    `${this.baseUrl}${this.csrfRefreshPath}`,
-                    {
-                        method: "GET",
-                        credentials: "include",
-                    },
-                );
-
-                if (!res.ok) {
-                    const message = await res.text().catch(() => "");
-                    const err = new Error(message || `HTTP ${res.status}`);
-                    (err as { status?: number }).status = res.status;
-                    throw err;
-                }
-
-                const payload = (await res.json().catch(() => null)) as
-                    | { data?: EntityServerClientHealthCsrf | null }
-                    | EntityServerClientHealthCsrf
-                    | null;
-                const csrf = (
-                    payload && typeof payload === "object" && "data" in payload
-                        ? (payload.data ?? null)
-                        : payload
-                ) as EntityServerClientHealthCsrf | null;
-
-                if (!csrf?.enabled || typeof csrf.token !== "string") {
-                    throw new Error("CSRF token refresh failed");
-                }
-
-                this._applyCsrfHealth(csrf);
-                return this.csrfToken;
-            })().finally(() => {
-                this._csrfRefreshPromise = null;
-            });
-        }
-
-        return this._csrfRefreshPromise;
-    }
-
-    _applyCsrfHealth(csrf?: EntityServerClientHealthCsrf | null): void {
-        if (!csrf?.enabled) {
-            this.setCsrfEnabled(false);
-            return;
-        }
-
-        this.csrfEnabled = true;
-        if (typeof csrf.token === "string") {
-            this.csrfToken = csrf.token;
-        }
-        if (typeof csrf.headerName === "string") {
-            this.csrfHeaderName = csrf.headerName;
-        }
-        if (typeof csrf.refreshPath === "string") {
-            this.csrfRefreshPath = csrf.refreshPath;
-        }
-        if (typeof csrf.expiresIn === "number" && csrf.expiresIn > 0) {
-            this._scheduleCsrfRefresh(csrf.expiresIn);
-        }
+        this.csrfEnabled = false;
     }
 
     // ─── 요청 본문 파싱 ───────────────────────────────────────────────────────
@@ -316,11 +244,9 @@ export class EntityServerClientBase {
             hmacSecret: this.hmacSecret,
             encryptRequests: this.encryptRequests,
             csrfEnabled: this.csrfEnabled,
-            csrfToken: this.csrfToken,
             csrfHeaderName: this.csrfHeaderName,
-            refreshCsrfToken: this.csrfEnabled
-                ? () => this.refreshCsrfToken()
-                : null,
+            csrfCookieName: this.csrfCookieName,
+            refreshCsrfCookie: this.csrfEnabled ? this._csrfRefresher : null,
         };
     }
 

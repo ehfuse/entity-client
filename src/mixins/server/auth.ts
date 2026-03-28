@@ -7,6 +7,9 @@ export function AuthMixin<TBase extends GConstructor<EntityServerClientBase>>(
     Base: TBase,
 ) {
     return class AuthMixinClass extends Base {
+        // AuthMixin 초기화: CSRF 쿠키 갱신을 위해 checkHealth를 _csrfRefresher로 등록
+        _csrfRefresher = (): Promise<void> => this.checkHealth().then(() => {});
+
         // ─── 인증 ─────────────────────────────────────────────────────────────
 
         /**
@@ -20,28 +23,21 @@ export function AuthMixin<TBase extends GConstructor<EntityServerClientBase>>(
          * ```
          */
         async checkHealth(): Promise<{
-            ok: boolean;
-            packet_encryption?: boolean;
-            packet_mode?: string;
+            status: string;
             packet_token?: string;
-            csrf?: import("../../types").EntityServerClientHealthCsrf;
         }> {
             const res = await fetch(`${this.baseUrl}/v1/health`, {
                 signal: AbortSignal.timeout(3000),
                 credentials: "include",
             });
             const data = (await res.json()) as {
-                ok: boolean;
-                packet_encryption?: boolean;
-                packet_mode?: string;
+                status: string;
                 packet_token?: string;
-                csrf?: import("../../types").EntityServerClientHealthCsrf;
             };
-            if (data.packet_encryption) this.encryptRequests = true;
             if (typeof data.packet_token === "string") {
                 this.anonymousPacketToken = data.packet_token;
             }
-            this._applyCsrfHealth(data.csrf);
+            this._applyCsrfHealth();
             return data;
         }
 

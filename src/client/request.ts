@@ -9,9 +9,9 @@ export interface RequestOptions {
     hmacSecret: string;
     encryptRequests: boolean;
     csrfEnabled: boolean;
-    csrfToken: string;
     csrfHeaderName: string;
-    refreshCsrfToken: (() => Promise<string>) | null;
+    csrfCookieName: string;
+    refreshCsrfCookie: (() => Promise<void>) | null;
 }
 
 function resolvePacketSource(opts: RequestOptions): string {
@@ -20,6 +20,18 @@ function resolvePacketSource(opts: RequestOptions): string {
 
 function requiresCsrf(method: string): boolean {
     return method !== "GET" && method !== "HEAD" && method !== "OPTIONS";
+}
+
+function readCsrfCookie(name: string): string {
+    if (typeof document === "undefined") return "";
+    for (const chunk of document.cookie.split(";")) {
+        const idx = chunk.indexOf("=");
+        if (idx < 0) continue;
+        if (chunk.substring(0, idx).trim() === name) {
+            return decodeURIComponent(chunk.substring(idx + 1).trim());
+        }
+    }
+    return "";
 }
 
 function isCsrfError(status: number, message: string): boolean {
@@ -73,12 +85,13 @@ export async function entityRequest<T>(
         anonymousPacketToken,
         csrfEnabled,
         csrfHeaderName,
-        refreshCsrfToken,
+        csrfCookieName,
+        refreshCsrfCookie,
     } = opts;
     const isHmacMode = withAuth && !!(apiKey && hmacSecret);
     const packetSource = resolvePacketSource(opts);
     const shouldUseCsrf = csrfEnabled && requiresCsrf(method) && !isHmacMode;
-    let csrfToken = opts.csrfToken;
+    let csrfToken = shouldUseCsrf ? readCsrfCookie(csrfCookieName) : "";
     let requestContentType = "application/json";
     const includeAnonymousPacketHeader =
         !token && !isHmacMode && !!anonymousPacketToken;
@@ -137,8 +150,9 @@ export async function entityRequest<T>(
         return headers;
     };
 
-    if (shouldUseCsrf && !csrfToken && refreshCsrfToken) {
-        csrfToken = await refreshCsrfToken();
+    if (shouldUseCsrf && !csrfToken && refreshCsrfCookie) {
+        await refreshCsrfCookie();
+        csrfToken = readCsrfCookie(csrfCookieName);
     }
 
     const executeRequest = (resolvedCsrfToken: string): Promise<Response> =>
@@ -157,10 +171,11 @@ export async function entityRequest<T>(
         const message = await readErrorMessage(res.clone());
         if (
             shouldUseCsrf &&
-            refreshCsrfToken &&
+            refreshCsrfCookie &&
             isCsrfError(res.status, message)
         ) {
-            csrfToken = await refreshCsrfToken();
+            await refreshCsrfCookie();
+            csrfToken = readCsrfCookie(csrfCookieName);
             res = await executeRequest(csrfToken);
         } else {
             const err = new Error(message);

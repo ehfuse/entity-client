@@ -123,14 +123,6 @@ export interface RegisterPushDeviceOptions {
     transactionId?: string;
 }
 
-export interface EntityServerClientHealthCsrf {
-    enabled: boolean;
-    token?: string;
-    headerName?: string;
-    refreshPath?: string;
-    expiresIn?: number;
-}
-
 // ─── 클라이언트 옵션 ──────────────────────────────────────────────────────────
 
 /** EntityServerClient 생성/설정 옵션입니다. */
@@ -143,10 +135,14 @@ export interface EntityServerClientOptions {
      */
     anonymousPacketToken?: string;
     csrfEnabled?: boolean;
-    csrfToken?: string;
     csrfHeaderName?: string;
-    csrfRefreshPath?: string;
-    csrfRefreshBuffer?: number;
+    /**
+     * CSRF 토큰이 저장되는 쿠키 이름입니다.
+     * 서버의 `cookie_name` 설정과 일치해야 합니다.
+     *
+     * 기본값: `"_csrf"`
+     */
+    csrfCookieName?: string;
     /**
      * `true`이면 인증된 POST/PUT 요청 바디를 XChaCha20-Poly1305로 암호화합니다.
      *
@@ -173,6 +169,16 @@ export interface EntityServerClientOptions {
      * 기본값: `60`
      */
     refreshBuffer?: number;
+    /**
+     * health tick 자동 실행 주기(ms)입니다.
+     * 설정하면 클라이언트 생성 직후부터 주기적으로 `/v1/health`를 호출합니다.
+     * CSRF 쿠키 갱신과 서버 상태 확인을 자동화합니다.
+     *
+     * 예: `healthTickInterval: 5 * 60 * 1000` → 5분마다 health 호출
+     *
+     * 기본값: 없음 (자동 실행 안 함)
+     */
+    healthTickInterval?: number;
     /**
      * 자동 갱신 성공 시 호출되는 콜백입니다.
      * 새 `access_token`과 `expires_in`이 전달됩니다.

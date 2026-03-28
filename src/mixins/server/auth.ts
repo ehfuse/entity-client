@@ -22,23 +22,36 @@ export function AuthMixin<TBase extends GConstructor<EntityServerClientBase>>(
          * await client.login(email, password);
          * ```
          */
-        async checkHealth(): Promise<{
-            status: string;
-            packet_token?: string;
-        }> {
+        async checkHealth(): Promise<{ status: string }> {
             const res = await fetch(`${this.baseUrl}/v1/health`, {
                 signal: AbortSignal.timeout(3000),
                 credentials: "include",
             });
-            const data = (await res.json()) as {
-                status: string;
-                packet_token?: string;
-            };
-            if (typeof data.packet_token === "string") {
-                this.anonymousPacketToken = data.packet_token;
+            const data = (await res.json()) as { status: string };
+
+            // anon_token 쿠키에서 익명 패킷 토큰 읽기
+            const anonToken = this._readCookie("anon_token");
+            if (anonToken) {
+                this.anonymousPacketToken = anonToken;
             }
+
             this._applyCsrfHealth();
             return data;
+        }
+
+        /** document.cookie 또는 Node 환경에서 쿠키 값 읽기 (SSR 대응) */
+        _readCookie(name: string): string | null {
+            if (typeof document === "undefined") return null;
+            const match = document.cookie
+                .split(";")
+                .map((c) => c.trim())
+                .find((c) => c.startsWith(`${name}=`));
+            if (!match) return null;
+            try {
+                return decodeURIComponent(match.slice(name.length + 1));
+            } catch {
+                return match.slice(name.length + 1);
+            }
         }
 
         /** 로그인 후 `access_token`을 내부 상태에 저장합니다. */

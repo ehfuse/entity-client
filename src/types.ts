@@ -192,6 +192,13 @@ export interface EntityServerClientOptions {
      */
     onSessionExpired?: (error: Error) => void;
     /**
+     * `healthTickInterval` 설정 시 health tick마다 서버 접속 가능 여부를 알려줍니다.
+     *
+     * - `online: true`  — health 호출 성공
+     * - `online: false` — health 호출 실패 (서버 오류 / 네트워크 단절)
+     */
+    onHealthChange?: (online: boolean) => void;
+    /**
      * HMAC 인증용 API Key (`X-API-Key` 헤더).
      * `hmacSecret`과 함께 설정하면 HMAC 인증 모드로 동작합니다.
      * **서버 사이드(Node.js 등) 전용. 브라우저에서는 사용하지 마세요.**

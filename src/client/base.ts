@@ -25,6 +25,7 @@ export class EntityServerClientBase {
     refreshBuffer: number;
     onTokenRefreshed?: (accessToken: string, expiresIn: number) => void;
     onSessionExpired?: (error: Error) => void;
+    onHealthChange?: (online: boolean) => void;
     _sessionRefreshToken: string | null = null;
     _refreshTimer: ReturnType<typeof setTimeout> | null = null;
     _healthTickTimer: ReturnType<typeof setInterval> | null = null;
@@ -53,9 +54,15 @@ export class EntityServerClientBase {
         this.refreshBuffer = options.refreshBuffer ?? 60;
         this.onTokenRefreshed = options.onTokenRefreshed;
         this.onSessionExpired = options.onSessionExpired;
-        if (typeof options.healthTickInterval === "number" && options.healthTickInterval > 0) {
+        this.onHealthChange = options.onHealthChange;
+        if (
+            typeof options.healthTickInterval === "number" &&
+            options.healthTickInterval > 0
+        ) {
             // _csrfRefresher는 AuthMixin에서 설정되므로 다음 tick에 시작
-            Promise.resolve().then(() => this.startHealthTick(options.healthTickInterval));
+            Promise.resolve().then(() =>
+                this.startHealthTick(options.healthTickInterval),
+            );
         }
     }
 
@@ -90,8 +97,15 @@ export class EntityServerClientBase {
             this.onTokenRefreshed = options.onTokenRefreshed;
         if (options.onSessionExpired)
             this.onSessionExpired = options.onSessionExpired;
-        if (typeof options.healthTickInterval === "number" && options.healthTickInterval > 0) {
-            Promise.resolve().then(() => this.startHealthTick(options.healthTickInterval));
+        if (options.onHealthChange)
+            this.onHealthChange = options.onHealthChange;
+        if (
+            typeof options.healthTickInterval === "number" &&
+            options.healthTickInterval > 0
+        ) {
+            Promise.resolve().then(() =>
+                this.startHealthTick(options.healthTickInterval),
+            );
         }
     }
 
@@ -134,9 +148,18 @@ export class EntityServerClientBase {
         this.stopHealthTick();
         const tick = (): void => {
             if (this._healthTickPromise) return;
-            this._healthTickPromise = (this._csrfRefresher ? this._csrfRefresher() : Promise.resolve())
-                .catch(() => {/* 네트워크 오류 무시 */})
-                .finally(() => { this._healthTickPromise = null; });
+            this._healthTickPromise = (
+                this._csrfRefresher ? this._csrfRefresher() : Promise.resolve()
+            )
+                .then(() => {
+                    this.onHealthChange?.(true);
+                })
+                .catch(() => {
+                    this.onHealthChange?.(false);
+                })
+                .finally(() => {
+                    this._healthTickPromise = null;
+                });
         };
         tick(); // 즉시 1회 실행
         this._healthTickTimer = setInterval(tick, intervalMs);

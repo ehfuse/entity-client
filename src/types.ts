@@ -123,12 +123,75 @@ export interface RegisterPushDeviceOptions {
     transactionId?: string;
 }
 
+// ─── Realtime ────────────────────────────────────────────────────────────────
+
+export type RealtimeConnectionStatus =
+    | "disabled"
+    | "idle"
+    | "connecting"
+    | "open"
+    | "closed";
+
+export type RealtimeMessageType =
+    | "hello"
+    | "event"
+    | "notification"
+    | "message"
+    | "chat"
+    | "ack"
+    | "error"
+    | "ping"
+    | "pong"
+    | "subscribe"
+    | "unsubscribe";
+
+export interface RealtimeEnvelope<T = unknown> {
+    v: number;
+    id: string;
+    ts: string;
+    type: RealtimeMessageType;
+    channel: string;
+    event: string;
+    data?: T;
+    meta?: Record<string, unknown>;
+    reply_to?: string;
+    error?: {
+        code: string;
+        message: string;
+        details?: unknown;
+    };
+}
+
+export interface RealtimeStatusChange {
+    status: RealtimeConnectionStatus;
+    previousStatus: RealtimeConnectionStatus;
+    reason?: string;
+    error?: Error;
+}
+
+export interface RealtimeClientOptions {
+    enabled?: boolean;
+    path?: string;
+    autoConnect?: boolean;
+    autoReconnect?: boolean;
+    reconnectDelayMs?: number;
+}
+
+export type RealtimeMessageListener = (
+    envelope: RealtimeEnvelope,
+) => void;
+
+export type RealtimeStatusListener = (
+    change: RealtimeStatusChange,
+) => void;
+
 // ─── 클라이언트 옵션 ──────────────────────────────────────────────────────────
 
 /** EntityServerClient 생성/설정 옵션입니다. */
 export interface EntityServerClientOptions {
     baseUrl?: string;
     token?: string;
+    realtime?: boolean | RealtimeClientOptions;
     /**
      * 익명 패킷 암호화용 부트스트랩 토큰입니다.
      * entity-app-server의 `/v1/health` 응답으로 설정되는 용도입니다.
@@ -147,24 +210,24 @@ export interface EntityServerClientOptions {
      * `true`이면 인증된 POST/PUT 요청 바디를 XChaCha20-Poly1305로 암호화합니다.
      *
      * 서버의 `EnablePacketEncryption`이 활성화된 경우 필수로 설정해야 합니다.
-     * 로그인(`login()`)·토큰 갱신(`refreshToken()`)은 인증 전 요청이므로 자동으로 건너뜁니다.
+     * 로그인(`login()`)·토큰 갱신(`refreshToken()`, `tokenRefresh()`)은 인증 전 요청이므로 자동으로 건너뜁니다.
      *
      * 기본값: `false`
      */
     encryptRequests?: boolean;
     /**
-     * `true`이면 `login()` 성공 후 Access Token 만료 전에 자동으로 갱신(silent refresh)합니다.
-     * 갱신 시점은 `expires_in - refreshBuffer` 초입니다.
+     * `true`이면 health tick 시 `X-Session-Bootstrap: 1`로 세션 연장을 함께 시도합니다.
+     * 브라우저 직접 통신에서는 refresh API를 따로 스케줄링하는 대신 이 방식을 권장합니다.
      *
-     * 갱신 성공 시 `onTokenRefreshed`, 실패 시 `onSessionExpired` 콜백이 호출됩니다.
+     * `healthTickInterval`이 설정되어 있지 않으면 `login()` 성공 후 기본 5분 주기로 health tick이 시작됩니다.
+     *
+     * 연장 성공 시 `onTokenRefreshed`, 더 이상 연장할 수 없으면 `onSessionExpired` 콜백이 호출될 수 있습니다.
      *
      * 기본값: `false`
      */
     keepSession?: boolean;
     /**
-     * 만료 몇 초 전에 자동 갱신을 시도할지 설정합니다.
-     *
-     * 예: `expires_in = 3600`, `refreshBuffer = 60` → 3540초 후 갱신
+     * Deprecated: timer 기반 refresh를 쓰지 않으므로 더 이상 사용하지 않습니다.
      *
      * 기본값: `60`
      */
@@ -173,6 +236,7 @@ export interface EntityServerClientOptions {
      * health tick 자동 실행 주기(ms)입니다.
      * 설정하면 클라이언트 생성 직후부터 주기적으로 `/v1/health`를 호출합니다.
      * CSRF 쿠키 갱신과 서버 상태 확인을 자동화합니다.
+     * `keepSession: true`이면 같은 tick에서 세션 연장도 함께 시도합니다.
      *
      * 예: `healthTickInterval: 5 * 60 * 1000` → 5분마다 health 호출
      *
@@ -180,14 +244,14 @@ export interface EntityServerClientOptions {
      */
     healthTickInterval?: number;
     /**
-     * 자동 갱신 성공 시 호출되는 콜백입니다.
+     * health 기반 세션 연장 성공 시 호출되는 콜백입니다.
      * 새 `access_token`과 `expires_in`이 전달됩니다.
-     * 앱은 이 콜백에서 localStorage 등에 토큰을 저장해야 합니다.
+     * health 기반 부트스트랩에서는 `expires_in`이 0일 수 있습니다.
      */
     onTokenRefreshed?: (accessToken: string, expiresIn: number) => void;
     /**
-     * 세션 유지 갱신 실패 시 호출되는 콜백입니다.
-     * refresh_token 만료 등으로 재발급이 불가능한 경우입니다.
+     * health 기반 세션 연장 실패 시 호출되는 콜백입니다.
+     * refresh_token 만료 등으로 더 이상 재발급이 불가능한 경우입니다.
      * 앱은 이 콜백에서 로그인 페이지로 이동하는 등의 처리를 해야 합니다.
      */
     onSessionExpired?: (error: Error) => void;

@@ -12,10 +12,81 @@ export interface RequestOptions {
     csrfHeaderName: string;
     csrfCookieName: string;
     refreshCsrfCookie: (() => Promise<void>) | null;
+    onAccessToken?: (token: string) => void;
+}
+
+export interface EntityRequestConfig {
+    requireOkShape?: boolean;
+    allowStatuses?: number[];
 }
 
 function resolvePacketSource(opts: RequestOptions): string {
     return opts.hmacSecret || opts.token || opts.anonymousPacketToken;
+}
+
+function resolveResponsePacketSource(
+    opts: RequestOptions,
+    withAuth: boolean,
+    anonymousPacketToken: string,
+): string {
+    if (opts.hmacSecret) {
+        return opts.hmacSecret;
+    }
+
+    if (!withAuth) {
+        return anonymousPacketToken;
+    }
+
+    return opts.token || anonymousPacketToken;
+}
+
+function maskPacketSource(value: string): string {
+    if (!value) {
+        return "";
+    }
+
+    if (value.length <= 8) {
+        return `${value.slice(0, 2)}...${value.slice(-2)}`;
+    }
+
+    return `${value.slice(0, 4)}...${value.slice(-4)}`;
+}
+
+function logPacketDecryptError(details: {
+    method: string;
+    path: string;
+    withAuth: boolean;
+    status: number;
+    contentType: string;
+    responsePacketSource: string;
+    tokenPresent: boolean;
+    anonymousPacketTokenPresent: boolean;
+    hmacEnabled: boolean;
+    error: unknown;
+}): void {
+    if (typeof console === "undefined" || typeof console.error !== "function") {
+        return;
+    }
+
+    console.error("[entity-client] packet decrypt failed", {
+        method: details.method,
+        path: details.path,
+        withAuth: details.withAuth,
+        status: details.status,
+        contentType: details.contentType,
+        responsePacketSource: maskPacketSource(details.responsePacketSource),
+        tokenPresent: details.tokenPresent,
+        anonymousPacketTokenPresent: details.anonymousPacketTokenPresent,
+        hmacEnabled: details.hmacEnabled,
+        error:
+            details.error instanceof Error
+                ? {
+                      name: details.error.name,
+                      message: details.error.message,
+                      stack: details.error.stack,
+                  }
+                : details.error,
+    });
 }
 
 function requiresCsrf(method: string): boolean {
@@ -74,33 +145,46 @@ export async function entityRequest<T>(
     body?: unknown,
     withAuth = true,
     extraHeaders: Record<string, string> = {},
-    requireOkShape = true,
+    config: boolean | EntityRequestConfig = true,
 ): Promise<T> {
+    const requestConfig: EntityRequestConfig =
+        typeof config === "boolean" ? { requireOkShape: config } : config;
+    const requireOkShape = requestConfig.requireOkShape ?? true;
+    const allowStatuses = new Set(requestConfig.allowStatuses ?? []);
+
     const {
         baseUrl,
         token,
         apiKey,
         hmacSecret,
         encryptRequests,
-        anonymousPacketToken,
         csrfEnabled,
         csrfHeaderName,
         csrfCookieName,
         refreshCsrfCookie,
+        onAccessToken,
     } = opts;
+    // checkHealth()가 완료되기 전 race condition을 막기 위해 anon_token 쿠키를 직접 fallback으로 읽음
+    const anonymousPacketToken =
+        opts.anonymousPacketToken || readCsrfCookie("anon_token");
     const isHmacMode = withAuth && !!(apiKey && hmacSecret);
     const packetSource = resolvePacketSource(opts);
+    const responsePacketSource = resolveResponsePacketSource(
+        opts,
+        withAuth,
+        anonymousPacketToken,
+    );
     const shouldUseCsrf = csrfEnabled && requiresCsrf(method) && !isHmacMode;
     let csrfToken = shouldUseCsrf ? readCsrfCookie(csrfCookieName) : "";
     let requestContentType = "application/json";
-    const includeAnonymousPacketHeader =
-        !token && !isHmacMode && !!anonymousPacketToken;
+    const includeAnonymousPacketHeader = !isHmacMode && !!anonymousPacketToken;
 
     let fetchBody: string | Uint8Array | null = null;
     if (body != null) {
         const shouldEncrypt =
             encryptRequests &&
             !!packetSource &&
+            withAuth &&
             method !== "GET" &&
             method !== "HEAD";
 
@@ -122,10 +206,13 @@ export async function entityRequest<T>(
     const buildHeaders = (
         resolvedCsrfToken: string,
     ): Record<string, string> => {
-        const headers: Record<string, string> = {
-            "Content-Type": requestContentType,
-            ...extraHeaders,
-        };
+        const headers: Record<string, string> = { ...extraHeaders };
+        const hasExplicitContentType = Object.keys(headers).some(
+            (key) => key.toLowerCase() === "content-type",
+        );
+        if (fetchBody != null && !hasExplicitContentType) {
+            headers["Content-Type"] = requestContentType;
+        }
         if (!isHmacMode && withAuth && token) {
             headers.Authorization = `Bearer ${token}`;
         }
@@ -177,23 +264,55 @@ export async function entityRequest<T>(
             await refreshCsrfCookie();
             csrfToken = readCsrfCookie(csrfCookieName);
             res = await executeRequest(csrfToken);
-        } else {
+        } else if (!allowStatuses.has(res.status)) {
             const err = new Error(message);
             (err as { status?: number }).status = res.status;
             throw err;
+        } else {
+            // 허용된 비정상 상태는 본문을 그대로 파싱해 호출자에게 넘깁니다.
         }
     }
 
-    if (!res.ok) {
+    if (!res.ok && !allowStatuses.has(res.status)) {
         const err = new Error(await readErrorMessage(res));
         (err as { status?: number }).status = res.status;
         throw err;
     }
 
+    const accessTokenHeader = res.headers.get("X-Access-Token")?.trim() ?? "";
+
     const contentType = res.headers.get("Content-Type") ?? "";
     if (contentType.includes("application/octet-stream")) {
-        const key = derivePacketKey(hmacSecret, token || anonymousPacketToken);
-        return decryptPacket<T>(await res.arrayBuffer(), key);
+        const key = derivePacketKey(hmacSecret, responsePacketSource);
+        const encryptedBody = await res.arrayBuffer();
+        let decrypted: T;
+
+        try {
+            decrypted = decryptPacket<T>(encryptedBody, key);
+        } catch (error) {
+            logPacketDecryptError({
+                method,
+                path,
+                withAuth,
+                status: res.status,
+                contentType,
+                responsePacketSource,
+                tokenPresent: !!token,
+                anonymousPacketTokenPresent: !!anonymousPacketToken,
+                hmacEnabled: !!hmacSecret,
+                error,
+            });
+            throw error;
+        }
+
+        if (accessTokenHeader) {
+            onAccessToken?.(accessTokenHeader);
+        }
+        return decrypted;
+    }
+
+    if (accessTokenHeader) {
+        onAccessToken?.(accessTokenHeader);
     }
 
     if (!contentType.includes("application/json")) {
@@ -201,7 +320,7 @@ export async function entityRequest<T>(
     }
 
     const data = (await res.json()) as { ok?: boolean; message?: string };
-    if (requireOkShape && !data.ok) {
+    if (requireOkShape && !data.ok && !allowStatuses.has(res.status)) {
         const err = new Error(
             data.message ?? `EntityServer error (HTTP ${res.status})`,
         );

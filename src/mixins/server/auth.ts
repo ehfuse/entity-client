@@ -2,13 +2,66 @@ import type {
     GConstructor,
     EntityServerClientBase,
 } from "../../client/base.js";
+import { entityRequest } from "../../client/request.js";
+
+export interface AuthLoginSuccessData {
+    access_token: string;
+    refresh_token: string;
+    expires_in: number;
+    force_password_change?: boolean;
+    password_expired?: boolean;
+    password_expires_in_days?: number;
+}
+
+export interface AuthLoginSuccessResponse {
+    ok: true;
+    data: AuthLoginSuccessData;
+    requires_2fa?: false;
+}
+
+export interface AuthLoginRequiresTwoFactorResponse {
+    ok: true;
+    requires_2fa: true;
+    data: {
+        two_factor_token: string;
+        expires_in: number;
+    };
+}
+
+export interface AuthLoginSetupRequiredResponse {
+    ok: false;
+    error: "2fa_setup_required";
+    message: string;
+    data: {
+        setup_token: string;
+        expires_in: number;
+    };
+}
+
+export type AuthLoginResponse =
+    | AuthLoginSuccessResponse
+    | AuthLoginRequiresTwoFactorResponse
+    | AuthLoginSetupRequiredResponse;
+
+export function isAuthLoginSuccessResponse(
+    response: AuthLoginResponse,
+): response is AuthLoginSuccessResponse {
+    return (
+        response.ok === true &&
+        response.requires_2fa !== true &&
+        typeof response.data === "object" &&
+        response.data !== null &&
+        "access_token" in response.data
+    );
+}
 
 export function AuthMixin<TBase extends GConstructor<EntityServerClientBase>>(
     Base: TBase,
 ) {
     return class AuthMixinClass extends Base {
-        // AuthMixin 초기화: CSRF 쿠키 갱신을 위해 checkHealth를 _csrfRefresher로 등록
-        _csrfRefresher = (): Promise<void> => this.checkHealth().then(() => {});
+        // health tick이 켜져 있으면 keepSession 여부에 따라 세션 부트스트랩까지 함께 처리합니다.
+        _csrfRefresher = (): Promise<void> =>
+            this.checkHealth(this.keepSession).then(() => {});
 
         // ─── 인증 ─────────────────────────────────────────────────────────────
 
@@ -22,20 +75,57 @@ export function AuthMixin<TBase extends GConstructor<EntityServerClientBase>>(
          * await client.login(email, password);
          * ```
          */
-        async checkHealth(): Promise<{ status: string }> {
+        async checkHealth(
+            bootstrapAuth = false,
+        ): Promise<{ status: string; authenticated?: boolean }> {
+            const previousToken = this.token;
+            const headers: Record<string, string> = {};
+            if (bootstrapAuth) {
+                headers["X-Session-Bootstrap"] = "1";
+            }
+
             const res = await fetch(`${this.baseUrl}/v1/health`, {
                 signal: AbortSignal.timeout(3000),
                 credentials: "include",
+                headers,
             });
-            const data = (await res.json()) as { status: string };
+            const data = (await res.json()) as {
+                status: string;
+                authenticated?: boolean;
+            };
 
-            // anon_token 쿠키에서 익명 패킷 토큰 읽기
+            const accessToken = res.headers.get("X-Access-Token");
+            if (accessToken) {
+                this.token = accessToken;
+                if (bootstrapAuth && accessToken !== previousToken) {
+                    this.onTokenRefreshed?.(accessToken, 0);
+                }
+                if (
+                    bootstrapAuth &&
+                    data.authenticated === true &&
+                    this.realtimeEnabled &&
+                    this.realtimeAutoConnect
+                ) {
+                    this.connectRealtime().catch(() => {});
+                }
+            }
+
+            // anon_token 쿠키에서 익명 패킷 토큰 읽기 — 존재하면 서버 패킷 암호화 활성 상태
             const anonToken = this._readCookie("anon_token");
             if (anonToken) {
                 this.anonymousPacketToken = anonToken;
+                this.encryptRequests = true;
             }
 
             this._applyCsrfHealth();
+            if (
+                bootstrapAuth &&
+                data.authenticated === false &&
+                previousToken
+            ) {
+                this.disconnectRealtime("session_expired");
+                this.onSessionExpired?.(new Error("Session expired"));
+            }
             return data;
         }
 
@@ -54,44 +144,91 @@ export function AuthMixin<TBase extends GConstructor<EntityServerClientBase>>(
             }
         }
 
-        /** 로그인 후 `access_token`을 내부 상태에 저장합니다. */
+        async _ensurePublicAuthBootstrap(): Promise<void> {
+            if (typeof document === "undefined") {
+                return;
+            }
+
+            if (this.apiKey && this.hmacSecret) {
+                return;
+            }
+
+            const hasAnonymousPacketToken =
+                !!this.anonymousPacketToken || !!this._readCookie("anon_token");
+            const hasCsrfCookie = !!this._readCookie(this.csrfCookieName);
+
+            if (hasAnonymousPacketToken && hasCsrfCookie && this.csrfEnabled) {
+                return;
+            }
+
+            await this.checkHealth(false);
+        }
+
+        /** 로그인 응답을 반환합니다. 성공 시에만 `access_token`을 내부 상태에 저장합니다. */
         async login(
             email: string,
             password: string,
-        ): Promise<{
+        ): Promise<AuthLoginResponse> {
+            await this._ensurePublicAuthBootstrap();
+
+            const response = await entityRequest<AuthLoginResponse>(
+                this._reqOpts,
+                "POST",
+                "/v1/auth/login",
+                { email, passwd: password },
+                false,
+                {},
+                { requireOkShape: false, allowStatuses: [403] },
+            );
+
+            if (isAuthLoginSuccessResponse(response)) {
+                this.token = response.data.access_token;
+                this._applyCsrfHealth();
+                if (this.keepSession && this._healthTickTimer === null) {
+                    this.startHealthTick();
+                }
+                if (this.realtimeEnabled && this.realtimeAutoConnect) {
+                    this.connectRealtime().catch(() => {});
+                }
+            }
+
+            return response;
+        }
+
+        /** HttpOnly refresh cookie로 Access Token을 재발급받아 내부 토큰을 교체합니다. */
+        async tokenRefresh(): Promise<{
             access_token: string;
             refresh_token: string;
             expires_in: number;
-            force_password_change?: boolean;
-            password_expired?: boolean;
-            password_expires_in_days?: number;
         }> {
             const data = await this._request<{
                 data: {
                     access_token: string;
                     refresh_token: string;
                     expires_in: number;
-                    force_password_change?: boolean;
-                    password_expired?: boolean;
-                    password_expires_in_days?: number;
                 };
-            }>("POST", "/v1/auth/login", { email, passwd: password }, false);
+            }>("POST", "/v1/auth/token_refresh", undefined, false);
             this.token = data.data.access_token;
-            if (this.keepSession)
-                this._scheduleKeepSession(
-                    data.data.refresh_token,
-                    data.data.expires_in,
-                    (rt) => this.refreshToken(rt),
-                );
+            this._applyCsrfHealth();
             return data.data;
         }
 
         /** Refresh Token으로 Access Token을 재발급받아 내부 토큰을 교체합니다. */
-        async refreshToken(
-            refreshToken: string,
-        ): Promise<{ access_token: string; expires_in: number }> {
+        async refreshToken(refreshToken?: string): Promise<{
+            access_token: string;
+            refresh_token?: string;
+            expires_in: number;
+        }> {
+            if (!refreshToken) {
+                return this.tokenRefresh();
+            }
+
             const data = await this._request<{
-                data: { access_token: string; expires_in: number };
+                data: {
+                    access_token: string;
+                    refresh_token: string;
+                    expires_in: number;
+                };
             }>(
                 "POST",
                 "/v1/auth/refresh",
@@ -99,12 +236,7 @@ export function AuthMixin<TBase extends GConstructor<EntityServerClientBase>>(
                 false,
             );
             this.token = data.data.access_token;
-            if (this.keepSession)
-                this._scheduleKeepSession(
-                    refreshToken,
-                    data.data.expires_in,
-                    (rt) => this.refreshToken(rt),
-                );
+            this._applyCsrfHealth();
             return data.data;
         }
 
@@ -112,15 +244,18 @@ export function AuthMixin<TBase extends GConstructor<EntityServerClientBase>>(
          * 서버에 로그아웃을 요청하고 내부 토큰을 초기화합니다.
          * refresh_token을 서버에 전달해 무효화합니다.
          */
-        async logout(refreshToken: string): Promise<{ ok: boolean }> {
+        async logout(refreshToken?: string): Promise<{ ok: boolean }> {
             this.stopKeepSession();
+            this.stopHealthTick();
+            this.disconnectRealtime("logout");
             const data = await this._request<{ ok: boolean }>(
                 "POST",
                 "/v1/auth/logout",
-                { refresh_token: refreshToken },
+                refreshToken ? { refresh_token: refreshToken } : undefined,
                 false,
             );
             this.token = "";
+            this._applyCsrfHealth();
             return data;
         }
 

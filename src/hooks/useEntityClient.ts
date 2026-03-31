@@ -9,9 +9,8 @@ export interface UseEntityServerOptions extends EntityServerClientOptions {
     tokenResolver?: () => string | undefined | null;
     /**
      * 페이지 새로고침 후 로그인 상태를 복원할 때 사용합니다.
-     * 이 값이 있으면 마운트 시 `client.refreshToken()`을 호출해 새 access_token을 발급받습니다.
-     * `keepSession: true`와 함께 사용하면 세션 유지 타이머도 재시작됩니다.
-     * 갱신 성공 시 `onTokenRefreshed` 콜백이 호출됩니다.
+     * 값 자체는 더 이상 사용하지 않고, 값이 있으면 마운트 시 `client.checkHealth(true)`로
+     * refresh 쿠키 기반 세션 부트스트랩을 시도합니다.
      */
     resumeSession?: string;
 }
@@ -20,7 +19,8 @@ export interface UseEntityServerOptions extends EntityServerClientOptions {
 export interface EntityClientShape {
     configure(options: Partial<EntityServerClientOptions>): void;
     setToken(token: string): void;
-    refreshToken(refreshToken: string): Promise<unknown>;
+    checkHealth?: (bootstrapAuth?: boolean) => Promise<unknown>;
+    refreshToken(refreshToken?: string): Promise<unknown>;
     submit(
         entity: string,
         data: Record<string, unknown>,
@@ -114,10 +114,16 @@ export function useEntityClient<TClient extends EntityClientShape>(
 
     const resumeTokenRef = useRef(resumeSession);
     useEffect(() => {
-        const storedRefreshToken = resumeTokenRef.current;
-        if (!storedRefreshToken) return;
-        client.refreshToken(storedRefreshToken).catch(() => {
-            // refresh_token 만료 등 — onSessionExpired 콜백이 이미 처리
+        if (!resumeTokenRef.current) return;
+        if (client.checkHealth) {
+            client.checkHealth(true).catch(() => {
+                // refresh cookie 만료 등 — onSessionExpired 콜백에서 처리 가능
+            });
+            return;
+        }
+
+        client.refreshToken(resumeTokenRef.current).catch(() => {
+            // 하위 호환 fallback
         });
     }, [client]);
 

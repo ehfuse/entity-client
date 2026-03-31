@@ -1,7 +1,16 @@
-import type { EntityServerClientOptions } from "../types.js";
+import type {
+    EntityServerClientOptions,
+    RealtimeClientOptions,
+    RealtimeConnectionStatus,
+    RealtimeEnvelope,
+    RealtimeMessageListener,
+    RealtimeStatusListener,
+} from "../types.js";
 import { readEnv } from "./utils.js";
 import { derivePacketKey, parseRequestBody } from "./packet.js";
 import { entityRequest, type RequestOptions } from "./request.js";
+
+const REALTIME_DEFAULT_PATH = "/v1/realtime";
 
 // mixin 헬퍼 타입
 export type GConstructor<T = object> = new (...args: any[]) => T;
@@ -30,6 +39,19 @@ export class EntityServerClientBase {
     _refreshTimer: ReturnType<typeof setTimeout> | null = null;
     _healthTickTimer: ReturnType<typeof setInterval> | null = null;
     _healthTickPromise: Promise<unknown> | null = null;
+    realtimeEnabled: boolean;
+    realtimePath: string;
+    realtimeAutoConnect: boolean;
+    realtimeAutoReconnect: boolean;
+    realtimeReconnectDelayMs: number;
+    realtimeStatus: RealtimeConnectionStatus;
+    _realtimeSocket: WebSocket | null = null;
+    _realtimeConnectPromise: Promise<void> | null = null;
+    _realtimeReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    _realtimeShouldReconnect = false;
+    _realtimeMessageListeners = new Set<RealtimeMessageListener>();
+    _realtimeStatusListeners = new Set<RealtimeStatusListener>();
+    _realtimeEventListeners = new Map<string, Set<RealtimeMessageListener>>();
     // ─── 초기화 & 설정 ────────────────────────────────────────────────────────
 
     /**
@@ -55,6 +77,13 @@ export class EntityServerClientBase {
         this.onTokenRefreshed = options.onTokenRefreshed;
         this.onSessionExpired = options.onSessionExpired;
         this.onHealthChange = options.onHealthChange;
+        this.realtimeEnabled = false;
+        this.realtimePath = REALTIME_DEFAULT_PATH;
+        this.realtimeAutoConnect = true;
+        this.realtimeAutoReconnect = true;
+        this.realtimeReconnectDelayMs = 3000;
+        this.realtimeStatus = "idle";
+        this._applyRealtimeOptions(options.realtime);
         if (
             typeof options.healthTickInterval === "number" &&
             options.healthTickInterval > 0
@@ -99,6 +128,9 @@ export class EntityServerClientBase {
             this.onSessionExpired = options.onSessionExpired;
         if (options.onHealthChange)
             this.onHealthChange = options.onHealthChange;
+        if (typeof options.realtime !== "undefined") {
+            this._applyRealtimeOptions(options.realtime);
+        }
         if (
             typeof options.healthTickInterval === "number" &&
             options.healthTickInterval > 0
@@ -112,6 +144,13 @@ export class EntityServerClientBase {
     /** 인증 요청에 사용할 JWT Access Token을 설정합니다. */
     setToken(token: string): void {
         this.token = token;
+        if (!token) {
+            this.disconnectRealtime("token_cleared");
+            return;
+        }
+        if (this.realtimeEnabled && this.realtimeAutoConnect) {
+            void this.connectRealtime().catch(() => {});
+        }
     }
 
     /** 익명 패킷 암호화용 토큰을 설정합니다. */
@@ -138,9 +177,217 @@ export class EntityServerClientBase {
         this.csrfEnabled = enabled;
     }
 
+    addRealtimeListener(listener: RealtimeMessageListener): void {
+        this._realtimeMessageListeners.add(listener);
+    }
+
+    removeRealtimeListener(listener: RealtimeMessageListener): void {
+        this._realtimeMessageListeners.delete(listener);
+    }
+
+    addRealtimeStatusListener(listener: RealtimeStatusListener): void {
+        this._realtimeStatusListeners.add(listener);
+    }
+
+    removeRealtimeStatusListener(listener: RealtimeStatusListener): void {
+        this._realtimeStatusListeners.delete(listener);
+    }
+
+    addRealtimeEventListener(
+        eventName: string,
+        listener: RealtimeMessageListener,
+    ): void {
+        const key = String(eventName).trim();
+        if (!key) {
+            return;
+        }
+        if (!this._realtimeEventListeners.has(key)) {
+            this._realtimeEventListeners.set(key, new Set());
+        }
+        this._realtimeEventListeners.get(key)!.add(listener);
+    }
+
+    removeRealtimeEventListener(
+        eventName: string,
+        listener: RealtimeMessageListener,
+    ): void {
+        const key = String(eventName).trim();
+        if (!key) {
+            return;
+        }
+        const listeners = this._realtimeEventListeners.get(key);
+        if (!listeners) {
+            return;
+        }
+        listeners.delete(listener);
+        if (listeners.size === 0) {
+            this._realtimeEventListeners.delete(key);
+        }
+    }
+
+    async connectRealtime(): Promise<void> {
+        if (!this.realtimeEnabled) {
+            this._setRealtimeStatus("disabled", "realtime_disabled");
+            return;
+        }
+
+        if (!this.token) {
+            throw new Error("Cannot open realtime connection without access token.");
+        }
+
+        if (typeof WebSocket === "undefined") {
+            throw new Error("WebSocket is not available in this environment.");
+        }
+
+        if (
+            this._realtimeSocket &&
+            this._realtimeSocket.readyState === WebSocket.OPEN
+        ) {
+            return;
+        }
+
+        if (
+            this._realtimeSocket &&
+            this._realtimeSocket.readyState === WebSocket.CONNECTING &&
+            this._realtimeConnectPromise
+        ) {
+            return this._realtimeConnectPromise;
+        }
+
+        this._clearRealtimeReconnectTimer();
+        this._realtimeShouldReconnect = this.realtimeAutoReconnect;
+        this._setRealtimeStatus("connecting", "connect_requested");
+
+        const socket = new WebSocket(this._buildRealtimeUrl());
+        this._realtimeSocket = socket;
+
+        this._realtimeConnectPromise = new Promise<void>((resolve, reject) => {
+            let settled = false;
+
+            const finalizeResolve = () => {
+                if (settled) {
+                    return;
+                }
+                settled = true;
+                this._realtimeConnectPromise = null;
+                resolve();
+            };
+
+            const finalizeReject = (error: Error) => {
+                if (settled) {
+                    return;
+                }
+                settled = true;
+                this._realtimeConnectPromise = null;
+                reject(error);
+            };
+
+            socket.addEventListener("open", () => {
+                this._setRealtimeStatus("open", "socket_open");
+                finalizeResolve();
+            });
+
+            socket.addEventListener("message", (event) => {
+                this._handleRealtimeMessage(event.data);
+            });
+
+            socket.addEventListener("error", () => {
+                this._setRealtimeStatus(
+                    "closed",
+                    "socket_error",
+                    new Error("Realtime socket error."),
+                );
+            });
+
+            socket.addEventListener("close", (event) => {
+                if (this._realtimeSocket === socket) {
+                    this._realtimeSocket = null;
+                }
+
+                const reason = event.reason || "socket_closed";
+                const error = new Error(
+                    `Realtime socket closed (${event.code}${event.reason ? `: ${event.reason}` : ""}).`,
+                );
+
+                this._setRealtimeStatus("closed", reason, error);
+                if (!settled) {
+                    finalizeReject(error);
+                }
+
+                if (
+                    this._realtimeShouldReconnect &&
+                    this.realtimeEnabled &&
+                    this.realtimeAutoReconnect &&
+                    this.token
+                ) {
+                    this._scheduleRealtimeReconnect(reason);
+                }
+            });
+        });
+
+        return this._realtimeConnectPromise;
+    }
+
+    disconnectRealtime(reason = "client_disconnect"): void {
+        this._realtimeShouldReconnect = false;
+        this._clearRealtimeReconnectTimer();
+
+        if (this._realtimeSocket) {
+            const socket = this._realtimeSocket;
+            this._realtimeSocket = null;
+            try {
+                if (
+                    socket.readyState === WebSocket.OPEN ||
+                    socket.readyState === WebSocket.CONNECTING
+                ) {
+                    socket.close(1000, reason);
+                }
+            } catch {
+                // ignore close errors
+            }
+        }
+
+        this._realtimeConnectPromise = null;
+        this._setRealtimeStatus(
+            this.realtimeEnabled ? "idle" : "disabled",
+            reason,
+        );
+    }
+
+    sendRealtime(message: RealtimeEnvelope | Record<string, unknown>): boolean {
+        if (
+            !this._realtimeSocket ||
+            this._realtimeSocket.readyState !== WebSocket.OPEN
+        ) {
+            return false;
+        }
+
+        this._realtimeSocket.send(JSON.stringify(message));
+        return true;
+    }
+
+    subscribeRealtime(subscriptions: string[]): boolean {
+        return this.sendRealtime({
+            type: "subscribe",
+            channel: "session",
+            event: "session.subscribe",
+            data: { subscriptions },
+        });
+    }
+
+    unsubscribeRealtime(subscriptions: string[]): boolean {
+        return this.sendRealtime({
+            type: "unsubscribe",
+            channel: "session",
+            event: "session.unsubscribe",
+            data: { subscriptions },
+        });
+    }
+
     /**
      * 주기적으로 health 체크를 실행합니다.
      * CSRF 쿠키 갱신과 서버 상태 확인을 자동화합니다.
+     * keepSession=true 이면 각 tick에서 세션 부트스트랩도 함께 시도합니다.
      *
      * @param intervalMs 호출 주기(ms). 기본값: 5분
      */
@@ -176,7 +423,7 @@ export class EntityServerClientBase {
 
     // ─── 세션 유지 ────────────────────────────────────────────────────────────
 
-    /** @internal 자동 토큰 갱신 타이머를 시작합니다. */
+    /** @deprecated 세션 연장은 health tick 기반 부트스트랩으로 대체되었습니다. */
     _scheduleKeepSession(
         refreshToken: string,
         expiresIn: number,
@@ -206,7 +453,7 @@ export class EntityServerClientBase {
         }, delayMs);
     }
 
-    /** @internal 자동 갱신 타이머를 정리합니다. */
+    /** @deprecated 세션 연장은 health tick 기반 부트스트랩으로 대체되었습니다. */
     _clearRefreshTimer(): void {
         if (this._refreshTimer !== null) {
             clearTimeout(this._refreshTimer);
@@ -215,12 +462,123 @@ export class EntityServerClientBase {
     }
 
     /**
-     * 세션 유지 타이머를 중지합니다.
+     * 세션 자동 연장을 중지합니다.
      * `logout()` 호출 시 자동으로 중지되며, 직접 호출이 필요한 경우는 드뭅니다.
      */
     stopKeepSession(): void {
         this._clearRefreshTimer();
         this._sessionRefreshToken = null;
+    }
+
+    _applyRealtimeOptions(options?: boolean | RealtimeClientOptions): void {
+        const normalized: RealtimeClientOptions =
+            typeof options === "boolean"
+                ? { enabled: options }
+                : (options ?? {});
+
+        this.realtimeEnabled = normalized.enabled ?? false;
+        this.realtimePath =
+            String(normalized.path ?? REALTIME_DEFAULT_PATH).trim() ||
+            REALTIME_DEFAULT_PATH;
+        this.realtimeAutoConnect = normalized.autoConnect ?? true;
+        this.realtimeAutoReconnect = normalized.autoReconnect ?? true;
+        this.realtimeReconnectDelayMs = Math.max(
+            250,
+            normalized.reconnectDelayMs ?? 3000,
+        );
+
+        if (!this.realtimeEnabled) {
+            this.disconnectRealtime("realtime_disabled");
+            return;
+        }
+
+        this._setRealtimeStatus("idle", "realtime_enabled");
+        if (this.token && this.realtimeAutoConnect) {
+            void this.connectRealtime().catch(() => {});
+        }
+    }
+
+    _buildRealtimeUrl(): string {
+        const rawBaseUrl = this.baseUrl || readEnv("VITE_ENTITY_SERVER_URL") || "";
+        const baseUrl = rawBaseUrl ||
+            (typeof window !== "undefined" ? window.location.origin : "");
+
+        if (!baseUrl) {
+            throw new Error("Realtime connection requires baseUrl.");
+        }
+
+        const url = new URL(this.realtimePath, baseUrl);
+        url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+        url.searchParams.set("access_token", this.token);
+        return url.toString();
+    }
+
+    _handleRealtimeMessage(payload: unknown): void {
+        if (typeof payload !== "string") {
+            return;
+        }
+
+        let envelope: RealtimeEnvelope;
+        try {
+            envelope = JSON.parse(payload) as RealtimeEnvelope;
+        } catch {
+            return;
+        }
+
+        for (const listener of this._realtimeMessageListeners) {
+            listener(envelope);
+        }
+
+        const listeners = this._realtimeEventListeners.get(envelope.event);
+        if (listeners) {
+            for (const listener of listeners) {
+                listener(envelope);
+            }
+        }
+    }
+
+    _scheduleRealtimeReconnect(reason: string): void {
+        this._clearRealtimeReconnectTimer();
+        this._realtimeReconnectTimer = setTimeout(() => {
+            this._realtimeReconnectTimer = null;
+            if (!this.realtimeEnabled || !this.token) {
+                return;
+            }
+            this._setRealtimeStatus("connecting", `${reason}:reconnect`);
+            void this.connectRealtime().catch(() => {});
+        }, this.realtimeReconnectDelayMs);
+    }
+
+    _clearRealtimeReconnectTimer(): void {
+        if (this._realtimeReconnectTimer !== null) {
+            clearTimeout(this._realtimeReconnectTimer);
+            this._realtimeReconnectTimer = null;
+        }
+    }
+
+    _setRealtimeStatus(
+        status: RealtimeConnectionStatus,
+        reason?: string,
+        error?: Error,
+    ): void {
+        const previousStatus = this.realtimeStatus;
+        if (
+            previousStatus === status &&
+            typeof reason === "undefined" &&
+            typeof error === "undefined"
+        ) {
+            return;
+        }
+
+        this.realtimeStatus = status;
+        for (const listener of this._realtimeStatusListeners) {
+            listener({
+                status,
+                previousStatus,
+                ...(reason ? { reason } : {}),
+                ...(error ? { error } : {}),
+            });
+        }
     }
 
     _applyCsrfHealth(): void {
@@ -270,6 +628,9 @@ export class EntityServerClientBase {
             csrfHeaderName: this.csrfHeaderName,
             csrfCookieName: this.csrfCookieName,
             refreshCsrfCookie: this.csrfEnabled ? this._csrfRefresher : null,
+            onAccessToken: (token) => {
+                this.token = token;
+            },
         };
     }
 

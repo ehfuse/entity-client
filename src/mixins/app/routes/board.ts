@@ -47,17 +47,11 @@ export function BoardMixin<TBase extends GConstructor<EntityServerClientBase>>(
             query: Record<string, unknown> = {},
         ): Promise<T> {
             const qs = buildQuery(query);
-            return this.http.get(
-                `/v1/board/${category}/list${qs ? `?${qs}` : ""}`,
-                false,
-            );
+            return this.http.get(`/v1/board/${category}/list${qs ? `?${qs}` : ""}`);
         }
 
         getBoardPost<T = unknown>(seq: number): Promise<T> {
-            return this.http.get(
-                `/v1/board/posts/${seq}`,
-                false,
-            );
+            return this.http.get(`/v1/board/posts/${seq}`);
         }
 
         createBoardPost<T = unknown>(

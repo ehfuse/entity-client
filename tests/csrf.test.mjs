@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { EntityServerClient } from "../dist/index.js";
+import { EntityServerApi } from "../dist/index.js";
 
 function jsonResponse(body, status = 200) {
     return new Response(JSON.stringify(body), {
@@ -14,22 +14,19 @@ function jsonResponse(body, status = 200) {
 
 test("unsafe request refreshes csrf token before first send", async () => {
     const originalFetch = globalThis.fetch;
+    const originalDocument = globalThis.document;
     const calls = [];
+
+    globalThis.document = { cookie: "" };
 
     globalThis.fetch = async (input, init = {}) => {
         const url = String(input);
         calls.push({ url, init });
 
-        if (url.endsWith("/v1/csrf-token")) {
+        if (url.endsWith("/v1/health")) {
+            globalThis.document.cookie = "_csrf=csrf-first";
             return jsonResponse({
-                success: true,
-                data: {
-                    enabled: true,
-                    token: "csrf-first",
-                    headerName: "x-csrf-token",
-                    refreshPath: "/v1/csrf-token",
-                    expiresIn: 3600,
-                },
+                status: "ok",
             });
         }
 
@@ -41,28 +38,27 @@ test("unsafe request refreshes csrf token before first send", async () => {
     };
 
     try {
-        const client = new EntityServerClient({
+        const client = new EntityServerApi({
             baseUrl: "https://example.com",
             csrfEnabled: true,
         });
 
-        const result = await client.requestJson(
-            "POST",
-            "/v1/test",
-            { ok: true },
-            false,
-        );
+        const result = await client.http.post("/v1/test", { ok: true }, false);
         assert.deepEqual(result, { ok: true, data: { saved: true } });
         assert.equal(calls.length, 2);
     } finally {
         globalThis.fetch = originalFetch;
+        globalThis.document = originalDocument;
     }
 });
 
 test("unsafe request retries once after csrf validation failure", async () => {
     const originalFetch = globalThis.fetch;
+    const originalDocument = globalThis.document;
     const seenHeaders = [];
     let step = 0;
+
+    globalThis.document = { cookie: "_csrf=csrf-stale" };
 
     globalThis.fetch = async (input, init = {}) => {
         const url = String(input);
@@ -79,16 +75,10 @@ test("unsafe request retries once after csrf validation failure", async () => {
 
         if (step === 1) {
             step += 1;
-            assert.equal(url, "https://example.com/v1/csrf-token");
+            assert.equal(url, "https://example.com/v1/health");
+            globalThis.document.cookie = "_csrf=csrf-fresh";
             return jsonResponse({
-                success: true,
-                data: {
-                    enabled: true,
-                    token: "csrf-fresh",
-                    headerName: "x-csrf-token",
-                    refreshPath: "/v1/csrf-token",
-                    expiresIn: 3600,
-                },
+                status: "ok",
             });
         }
 
@@ -98,22 +88,17 @@ test("unsafe request retries once after csrf validation failure", async () => {
     };
 
     try {
-        const client = new EntityServerClient({
+        const client = new EntityServerApi({
             baseUrl: "https://example.com",
             csrfEnabled: true,
-            csrfToken: "csrf-stale",
         });
 
-        const result = await client.requestJson(
-            "POST",
-            "/v1/test",
-            { ok: true },
-            false,
-        );
+        const result = await client.http.post("/v1/test", { ok: true }, false);
         assert.deepEqual(result, { ok: true, data: { retried: true } });
         assert.deepEqual(seenHeaders, ["csrf-stale", "csrf-fresh"]);
         assert.equal(step, 2);
     } finally {
         globalThis.fetch = originalFetch;
+        globalThis.document = originalDocument;
     }
 });

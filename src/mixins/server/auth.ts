@@ -75,9 +75,11 @@ export function AuthMixin<TBase extends GConstructor<EntityServerClientBase>>(
          * await client.login(email, password);
          * ```
          */
-        async checkHealth(
-            bootstrapAuth = false,
-        ): Promise<{ status: string; authenticated?: boolean }> {
+        async checkHealth(bootstrapAuth = false): Promise<{
+            status: string;
+            authenticated?: boolean;
+            packet_encryption?: boolean;
+        }> {
             const previousToken = this.token;
             const headers: Record<string, string> = {};
             if (bootstrapAuth) {
@@ -92,6 +94,7 @@ export function AuthMixin<TBase extends GConstructor<EntityServerClientBase>>(
             const data = (await res.json()) as {
                 status: string;
                 authenticated?: boolean;
+                packet_encryption?: boolean;
             };
 
             const accessToken = res.headers.get("X-Access-Token");
@@ -110,9 +113,9 @@ export function AuthMixin<TBase extends GConstructor<EntityServerClientBase>>(
                 }
             }
 
-            // anon_token 쿠키에서 익명 패킷 토큰 읽기 — 존재하면 서버 패킷 암호화 활성 상태
+            // 패킷 암호화는 health 응답이 명시적으로 활성이라고 알려줄 때만 자동 활성화한다.
             const anonToken = this._readCookie("anon_token");
-            if (anonToken) {
+            if (data.packet_encryption === true && anonToken) {
                 this.anonymousPacketToken = anonToken;
                 this.encryptRequests = true;
             }

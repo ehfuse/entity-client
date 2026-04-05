@@ -18,7 +18,7 @@ export function EntityMixin<TBase extends GConstructor<EntityServerClientBase>>(
 
         /** 트랜잭션을 시작하고 활성 트랜잭션 ID를 저장합니다. */
         async transStart(): Promise<string> {
-            const res = await this._request<{
+            const res = await this.request<{
                 ok: boolean;
                 transaction_id: string;
             }>("POST", "/v1/transaction/start", undefined, false);
@@ -36,7 +36,7 @@ export function EntityMixin<TBase extends GConstructor<EntityServerClientBase>>(
                     ),
                 );
             this.activeTxId = null;
-            return this._request("POST", `/v1/transaction/rollback/${txId}`);
+            return this.request("POST", `/v1/transaction/rollback/${txId}`);
         }
 
         /**
@@ -56,14 +56,14 @@ export function EntityMixin<TBase extends GConstructor<EntityServerClientBase>>(
                     ),
                 );
             this.activeTxId = null;
-            return this._request("POST", `/v1/transaction/commit/${txId}`);
+            return this.request("POST", `/v1/transaction/commit/${txId}`);
         }
 
         // ─── 엔티티 CRUD ──────────────────────────────────────────────────────
 
         /** 엔티티 설정 메타데이터를 조회합니다. */
         meta<T = unknown>(entity: string): Promise<{ ok: boolean; data: T }> {
-            return this._request("POST", `/v1/entity/${entity}/meta`, {});
+            return this.request("POST", `/v1/entity/${entity}/meta`, {});
         }
 
         /** 엔티티 데이터를 저장 없이 검증합니다. */
@@ -81,7 +81,7 @@ export function EntityMixin<TBase extends GConstructor<EntityServerClientBase>>(
             opts: { skipHooks?: boolean } = {},
         ): Promise<{ ok: boolean; data: T }> {
             const q = opts.skipHooks ? "?skipHooks=true" : "";
-            return this._request("GET", `/v1/entity/${entity}/${seq}${q}`);
+            return this.request("GET", `/v1/entity/${entity}/${seq}${q}`);
         }
 
         /** 조건으로 엔티티 단건을 조회합니다. data 컬럼을 완전히 복호화하여 반환합니다. */
@@ -91,7 +91,7 @@ export function EntityMixin<TBase extends GConstructor<EntityServerClientBase>>(
             opts: { skipHooks?: boolean } = {},
         ): Promise<{ ok: boolean; data: T }> {
             const q = opts.skipHooks ? "?skipHooks=true" : "";
-            return this._request(
+            return this.request(
                 "POST",
                 `/v1/entity/${entity}/find${q}`,
                 conditions ?? {},
@@ -113,7 +113,7 @@ export function EntityMixin<TBase extends GConstructor<EntityServerClientBase>>(
                 queryObj.orderBy =
                     orderDir === "DESC" ? `-${orderBy}` : orderBy;
             if (fields?.length) queryObj.fields = fields.join(",");
-            return this._request(
+            return this.request(
                 "POST",
                 `/v1/entity/${entity}/list?${buildQuery(queryObj)}`,
                 conditions ?? {},
@@ -129,7 +129,7 @@ export function EntityMixin<TBase extends GConstructor<EntityServerClientBase>>(
             entity: string,
             conditions?: Record<string, unknown>,
         ): Promise<{ ok: boolean; count: number }> {
-            return this._request(
+            return this.request(
                 "POST",
                 `/v1/entity/${entity}/count`,
                 conditions ?? {},
@@ -145,7 +145,7 @@ export function EntityMixin<TBase extends GConstructor<EntityServerClientBase>>(
             entity: string,
             req: EntityQueryRequest,
         ): Promise<{ ok: boolean; data: { items: T[]; count: number } }> {
-            return this._request("POST", `/v1/entity/${entity}/query`, req);
+            return this.request("POST", `/v1/entity/${entity}/query`, req);
         }
 
         /** 엔티티 데이터를 생성/수정(Submit)합니다. `seq`가 없으면 INSERT, 있으면 UPDATE입니다. */
@@ -159,7 +159,7 @@ export function EntityMixin<TBase extends GConstructor<EntityServerClientBase>>(
                 ? { "X-Transaction-ID": txId }
                 : undefined;
             const q = opts.skipHooks ? "?skipHooks=true" : "";
-            return this._request(
+            return this.request(
                 "POST",
                 `/v1/entity/${entity}/submit${q}`,
                 data,
@@ -186,7 +186,7 @@ export function EntityMixin<TBase extends GConstructor<EntityServerClientBase>>(
             const extraHeaders = txId
                 ? { "X-Transaction-ID": txId }
                 : undefined;
-            return this._request(
+            return this.request(
                 "POST",
                 `/v1/entity/${entity}/delete/${seq}${q}`,
                 undefined,
@@ -204,7 +204,7 @@ export function EntityMixin<TBase extends GConstructor<EntityServerClientBase>>(
             ok: boolean;
             data: EntityListResult<EntityHistoryRecord<T>>;
         }> {
-            return this._request(
+            return this.request(
                 "GET",
                 `/v1/entity/${entity}/history/${seq}?${buildQuery({ page: 1, limit: 50, ...params })}`,
             );
@@ -212,7 +212,7 @@ export function EntityMixin<TBase extends GConstructor<EntityServerClientBase>>(
 
         /** 특정 이력 시점으로 엔티티를 롤백합니다. */
         rollback(entity: string, historySeq: number): Promise<{ ok: boolean }> {
-            return this._request(
+            return this.request(
                 "POST",
                 `/v1/entity/${entity}/rollback/${historySeq}`,
             );

@@ -12,12 +12,12 @@ export function SmtpMixin<TBase extends GConstructor<EntityServerClientBase>>(
 
         /** SMTP로 메일을 발송합니다. */
         smtpSend(req: SmtpSendRequest): Promise<{ ok: boolean; seq: number }> {
-            return this._request("POST", "/v1/smtp/send", req);
+            return this.request("POST", "/v1/smtp/send", req);
         }
 
         /** SMTP 발송 상태를 조회합니다. */
         smtpStatus(seq: number): Promise<{ ok: boolean; status: string }> {
-            return this._request("POST", `/v1/smtp/status/${seq}`, {});
+            return this.request("POST", `/v1/smtp/status/${seq}`, {});
         }
 
         /** SMTP 템플릿 미리보기 HTML을 반환합니다. */

@@ -7,65 +7,65 @@ export function AdminMixin<TBase extends GConstructor<EntityServerClientBase>>(
     Base: TBase,
 ) {
     return class AdminMixinClass extends Base {
-        _adminPath(path: string): string {
+        adminPath(path: string): string {
             return `/v1/admin${path}`;
         }
 
-        _adminGet<T>(path: string): Promise<T> {
-            return this.http.get(this._adminPath(path));
+        adminGet<T>(path: string): Promise<T> {
+            return this.http.get(this.adminPath(path));
         }
 
-        _adminPost<T>(path: string, body?: unknown): Promise<T> {
-            return this.http.post(this._adminPath(path), body);
+        adminPost<T>(path: string, body?: unknown): Promise<T> {
+            return this.http.post(this.adminPath(path), body);
         }
 
-        _adminPut<T>(path: string, body?: unknown): Promise<T> {
-            return this.http.put(this._adminPath(path), body);
+        adminPut<T>(path: string, body?: unknown): Promise<T> {
+            return this.http.put(this.adminPath(path), body);
         }
 
-        _adminPatch<T>(path: string, body?: unknown): Promise<T> {
-            return this.http.patch(this._adminPath(path), body);
+        adminPatch<T>(path: string, body?: unknown): Promise<T> {
+            return this.http.patch(this.adminPath(path), body);
         }
 
-        _adminDelete<T>(path: string, body?: unknown): Promise<T> {
-            return this.http.delete(this._adminPath(path), body);
+        adminDelete<T>(path: string, body?: unknown): Promise<T> {
+            return this.http.delete(this.adminPath(path), body);
         }
 
         listAdminEntities<T = unknown>(): Promise<T> {
-            return this._adminGet("/entities");
+            return this.adminGet("/entities");
         }
 
         getAdminErdSchema<T = unknown>(): Promise<T> {
-            return this._adminGet("/erd/schema");
+            return this.adminGet("/erd/schema");
         }
 
         batchEnsureAdminEntities<T = unknown>(configs: unknown[]): Promise<T> {
-            return this._adminPost("/entities/batch-ensure", configs);
+            return this.adminPost("/entities/batch-ensure", configs);
         }
 
         createAdminEntityConfig<T = unknown>(
             entity: string,
             config: Record<string, unknown>,
         ): Promise<T> {
-            return this._adminPost(`/${entity}/create`, config);
+            return this.adminPost(`/${entity}/create`, config);
         }
 
         getAdminEntityConfig<T = unknown>(entity: string): Promise<T> {
-            return this._adminGet(`/${entity}/config`);
+            return this.adminGet(`/${entity}/config`);
         }
 
         updateAdminEntityConfig<T = unknown>(
             entity: string,
             config: Record<string, unknown>,
         ): Promise<T> {
-            return this._adminPut(`/${entity}/config`, config);
+            return this.adminPut(`/${entity}/config`, config);
         }
 
         validateAdminEntityConfig<T = unknown>(
             config: Record<string, unknown>,
             entity?: string,
         ): Promise<T> {
-            return this._adminPost(
+            return this.adminPost(
                 entity ? `/${entity}/validate` : "/entity/validate",
                 config,
             );
@@ -75,7 +75,7 @@ export function AdminMixin<TBase extends GConstructor<EntityServerClientBase>>(
             config: Record<string, unknown>,
             entity?: string,
         ): Promise<T> {
-            return this._adminPost(
+            return this.adminPost(
                 entity ? `/${entity}/normalize` : "/entity/normalize",
                 config,
             );
@@ -85,184 +85,184 @@ export function AdminMixin<TBase extends GConstructor<EntityServerClientBase>>(
             entity: string,
             body?: Record<string, unknown>,
         ): Promise<T> {
-            return this._adminPost(`/${entity}/stats`, body);
+            return this.adminPost(`/${entity}/stats`, body);
         }
 
         reindexAdminEntity<T = unknown>(entity: string): Promise<T> {
-            return this._adminPost(`/${entity}/reindex`);
+            return this.adminPost(`/${entity}/reindex`);
         }
 
         syncAdminEntitySchema<T = unknown>(entity: string): Promise<T> {
-            return this._adminPost(`/${entity}/sync-schema`);
+            return this.adminPost(`/${entity}/sync-schema`);
         }
 
         resetAdminEntity<T = unknown>(entity: string): Promise<T> {
-            return this._adminPost(`/${entity}/reset`);
+            return this.adminPost(`/${entity}/reset`);
         }
 
         truncateAdminEntity<T = unknown>(entity: string): Promise<T> {
-            return this._adminPost(`/${entity}/truncate`);
+            return this.adminPost(`/${entity}/truncate`);
         }
 
         dropAdminEntity<T = unknown>(entity: string): Promise<T> {
-            return this._adminPost(`/${entity}/drop`);
+            return this.adminPost(`/${entity}/drop`);
         }
 
         resetAllAdmin<T = unknown>(body?: Record<string, unknown>): Promise<T> {
-            return this._adminPost("/reset-all", body);
+            return this.adminPost("/reset-all", body);
         }
 
         listAdminConfigs<T = unknown>(): Promise<T> {
-            return this._adminGet("/configs");
+            return this.adminGet("/configs");
         }
 
         getAdminConfig<T = unknown>(domain: string): Promise<T> {
-            return this._adminGet(`/configs/${domain}`);
+            return this.adminGet(`/configs/${domain}`);
         }
 
         updateAdminConfig<T = unknown>(
             domain: string,
             patch: Record<string, unknown>,
         ): Promise<T> {
-            return this._adminPatch(`/configs/${domain}`, patch);
+            return this.adminPatch(`/configs/${domain}`, patch);
         }
 
         listAdminRoles<T = unknown>(): Promise<T> {
-            return this._adminGet("/roles");
+            return this.adminGet("/roles");
         }
 
         createAdminRole<T = unknown>(
             body: Record<string, unknown>,
         ): Promise<T> {
-            return this._adminPost("/roles", body);
+            return this.adminPost("/roles", body);
         }
 
         getAdminRole<T = unknown>(seq: number): Promise<T> {
-            return this._adminGet(`/roles/${seq}`);
+            return this.adminGet(`/roles/${seq}`);
         }
 
         updateAdminRole<T = unknown>(
             seq: number,
             body: Record<string, unknown>,
         ): Promise<T> {
-            return this._adminPatch(`/roles/${seq}`, body);
+            return this.adminPatch(`/roles/${seq}`, body);
         }
 
         deleteAdminRole<T = unknown>(seq: number): Promise<T> {
-            return this._adminDelete(`/roles/${seq}`);
+            return this.adminDelete(`/roles/${seq}`);
         }
 
         listAdminApiKeys<T = unknown>(): Promise<T> {
-            return this._adminGet("/api-keys");
+            return this.adminGet("/api-keys");
         }
 
         createAdminApiKey<T = unknown>(
             body: Record<string, unknown>,
         ): Promise<T> {
-            return this._adminPost("/api-keys", body);
+            return this.adminPost("/api-keys", body);
         }
 
         getAdminApiKey<T = unknown>(seq: number): Promise<T> {
-            return this._adminGet(`/api-keys/${seq}`);
+            return this.adminGet(`/api-keys/${seq}`);
         }
 
         updateAdminApiKey<T = unknown>(
             seq: number,
             body: Record<string, unknown>,
         ): Promise<T> {
-            return this._adminPatch(`/api-keys/${seq}`, body);
+            return this.adminPatch(`/api-keys/${seq}`, body);
         }
 
         deleteAdminApiKey<T = unknown>(seq: number): Promise<T> {
-            return this._adminDelete(`/api-keys/${seq}`);
+            return this.adminDelete(`/api-keys/${seq}`);
         }
 
         regenerateAdminApiKeySecret<T = unknown>(seq: number): Promise<T> {
-            return this._adminPost(`/api-keys/${seq}/regenerate-secret`);
+            return this.adminPost(`/api-keys/${seq}/regenerate-secret`);
         }
 
         listAdminAccounts<T = unknown>(): Promise<T> {
-            return this._adminGet("/accounts");
+            return this.adminGet("/accounts");
         }
 
         createAdminAccount<T = unknown>(
             body: Record<string, unknown>,
         ): Promise<T> {
-            return this._adminPost("/accounts", body);
+            return this.adminPost("/accounts", body);
         }
 
         getAdminAccount<T = unknown>(seq: number): Promise<T> {
-            return this._adminGet(`/accounts/${seq}`);
+            return this.adminGet(`/accounts/${seq}`);
         }
 
         updateAdminAccount<T = unknown>(
             seq: number,
             body: Record<string, unknown>,
         ): Promise<T> {
-            return this._adminPatch(`/accounts/${seq}`, body);
+            return this.adminPatch(`/accounts/${seq}`, body);
         }
 
         deleteAdminAccount<T = unknown>(seq: number): Promise<T> {
-            return this._adminDelete(`/accounts/${seq}`);
+            return this.adminDelete(`/accounts/${seq}`);
         }
 
         listAdminLicenses<T = unknown>(): Promise<T> {
-            return this._adminGet("/licenses");
+            return this.adminGet("/licenses");
         }
 
         createAdminLicense<T = unknown>(
             body: Record<string, unknown>,
         ): Promise<T> {
-            return this._adminPost("/licenses", body);
+            return this.adminPost("/licenses", body);
         }
 
         getAdminLicense<T = unknown>(seq: number): Promise<T> {
-            return this._adminGet(`/licenses/${seq}`);
+            return this.adminGet(`/licenses/${seq}`);
         }
 
         updateAdminLicense<T = unknown>(
             seq: number,
             body: Record<string, unknown>,
         ): Promise<T> {
-            return this._adminPatch(`/licenses/${seq}`, body);
+            return this.adminPatch(`/licenses/${seq}`, body);
         }
 
         deleteAdminLicense<T = unknown>(seq: number): Promise<T> {
-            return this._adminDelete(`/licenses/${seq}`);
+            return this.adminDelete(`/licenses/${seq}`);
         }
 
         runAdminBackup<T = unknown>(
             body?: Record<string, unknown>,
         ): Promise<T> {
-            return this._adminPost("/backup/run", body);
+            return this.adminPost("/backup/run", body);
         }
 
         getAdminBackupStatus<T = unknown>(
             body?: Record<string, unknown>,
         ): Promise<T> {
-            return this._adminPost("/backup/status", body);
+            return this.adminPost("/backup/status", body);
         }
 
         listAdminBackups<T = unknown>(
             body?: Record<string, unknown>,
         ): Promise<T> {
-            return this._adminPost("/backup/list", body);
+            return this.adminPost("/backup/list", body);
         }
 
         restoreAdminBackup<T = unknown>(
             body: Record<string, unknown>,
         ): Promise<T> {
-            return this._adminPost("/backup/restore", body);
+            return this.adminPost("/backup/restore", body);
         }
 
         deleteAdminBackup<T = unknown>(
             body: Record<string, unknown>,
         ): Promise<T> {
-            return this._adminPost("/backup/delete", body);
+            return this.adminPost("/backup/delete", body);
         }
 
         disableAdminAccountTwoFactor<T = unknown>(seq: number): Promise<T> {
-            return this._adminDelete(`/accounts/${seq}/2fa`);
+            return this.adminDelete(`/accounts/${seq}/2fa`);
         }
     };
 }

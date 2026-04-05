@@ -31,7 +31,7 @@ export function FileMixin<TBase extends GConstructor<EntityServerClientBase>>(
                 form.append("ref_seq", String(opts.refSeq));
             if (opts.isPublic != null)
                 form.append("is_public", opts.isPublic ? "true" : "false");
-            return this._requestForm(
+            return this.requestForm(
                 "POST",
                 `/v1/files/${entity}/upload`,
                 form,
@@ -40,7 +40,7 @@ export function FileMixin<TBase extends GConstructor<EntityServerClientBase>>(
 
         /** 파일을 다운로드합니다. `ArrayBuffer`를 반환합니다. */
         fileDownload(entity: string, uuid: string): Promise<ArrayBuffer> {
-            return this._requestBinary(
+            return this.requestBinary(
                 "POST",
                 `/v1/files/${entity}/download/${uuid}`,
                 {},
@@ -52,7 +52,7 @@ export function FileMixin<TBase extends GConstructor<EntityServerClientBase>>(
             entity: string,
             uuid: string,
         ): Promise<{ ok: boolean; uuid: string; deleted: boolean }> {
-            return this._request(
+            return this.request(
                 "POST",
                 `/v1/files/${entity}/delete/${uuid}`,
                 {},
@@ -67,7 +67,7 @@ export function FileMixin<TBase extends GConstructor<EntityServerClientBase>>(
             ok: boolean;
             data: { items: FileMeta[]; total: number };
         }> {
-            return this._request(
+            return this.request(
                 "POST",
                 `/v1/files/${entity}/list`,
                 opts.refSeq ? { ref_seq: opts.refSeq } : {},
@@ -79,7 +79,7 @@ export function FileMixin<TBase extends GConstructor<EntityServerClientBase>>(
             entity: string,
             uuid: string,
         ): Promise<{ ok: boolean; data: FileMeta }> {
-            return this._request(
+            return this.request(
                 "POST",
                 `/v1/files/${entity}/meta/${uuid}`,
                 {},
@@ -88,7 +88,7 @@ export function FileMixin<TBase extends GConstructor<EntityServerClientBase>>(
 
         /** 임시 파일 접근 토큰을 발급합니다. */
         fileToken(uuid: string): Promise<{ ok: boolean; token: string }> {
-            return this._request("POST", `/v1/files/token/${uuid}`, {});
+            return this.request("POST", `/v1/files/token/${uuid}`, {});
         }
 
         /** 파일 인라인 뷰/다운로드 URL을 반환합니다. */

@@ -11,12 +11,12 @@ export function TransactionMixin<
         transactionStart<T = unknown>(
             body?: Record<string, unknown>,
         ): Promise<T> {
-            return this._request("POST", "/v1/transaction/start", body ?? {});
+            return this.request("POST", "/v1/transaction/start", body ?? {});
         }
 
         /** 지정한 트랜잭션을 커밋합니다. */
         transactionCommit<T = unknown>(transactionId: string): Promise<T> {
-            return this._request(
+            return this.request(
                 "POST",
                 `/v1/transaction/commit/${encodeURIComponent(transactionId)}`,
                 {},
@@ -25,7 +25,7 @@ export function TransactionMixin<
 
         /** 지정한 트랜잭션을 롤백합니다. */
         transactionRollback<T = unknown>(transactionId: string): Promise<T> {
-            return this._request(
+            return this.request(
                 "POST",
                 `/v1/transaction/rollback/${encodeURIComponent(transactionId)}`,
                 {},

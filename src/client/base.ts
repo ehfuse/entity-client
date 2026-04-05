@@ -26,7 +26,7 @@ export class EntityServerClientBase {
     csrfHeaderName: string;
     csrfCookieName: string;
     /** @internal health 재호출로 CSRF 쿠키 갱신 (AuthMixin에서 설정) */
-    _csrfRefresher: (() => Promise<void>) | null = null;
+    csrfRefresher: (() => Promise<void>) | null = null;
     activeTxId: string | null = null;
 
     // 세션 유지 관련
@@ -35,23 +35,23 @@ export class EntityServerClientBase {
     onTokenRefreshed?: (accessToken: string, expiresIn: number) => void;
     onSessionExpired?: (error: Error) => void;
     onHealthChange?: (online: boolean) => void;
-    _sessionRefreshToken: string | null = null;
-    _refreshTimer: ReturnType<typeof setTimeout> | null = null;
-    _healthTickTimer: ReturnType<typeof setInterval> | null = null;
-    _healthTickPromise: Promise<unknown> | null = null;
+    sessionRefreshToken: string | null = null;
+    refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    healthTickTimer: ReturnType<typeof setInterval> | null = null;
+    healthTickPromise: Promise<unknown> | null = null;
     realtimeEnabled: boolean;
     realtimePath: string;
     realtimeAutoConnect: boolean;
     realtimeAutoReconnect: boolean;
     realtimeReconnectDelayMs: number;
     realtimeStatus: RealtimeConnectionStatus;
-    _realtimeSocket: WebSocket | null = null;
-    _realtimeConnectPromise: Promise<void> | null = null;
-    _realtimeReconnectTimer: ReturnType<typeof setTimeout> | null = null;
-    _realtimeShouldReconnect = false;
-    _realtimeMessageListeners = new Set<RealtimeMessageListener>();
-    _realtimeStatusListeners = new Set<RealtimeStatusListener>();
-    _realtimeEventListeners = new Map<string, Set<RealtimeMessageListener>>();
+    realtimeSocket: WebSocket | null = null;
+    realtimeConnectPromise: Promise<void> | null = null;
+    realtimeReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    realtimeShouldReconnect = false;
+    realtimeMessageListeners = new Set<RealtimeMessageListener>();
+    realtimeStatusListeners = new Set<RealtimeStatusListener>();
+    realtimeEventListeners = new Map<string, Set<RealtimeMessageListener>>();
     // ─── 초기화 & 설정 ────────────────────────────────────────────────────────
 
     /**
@@ -83,12 +83,12 @@ export class EntityServerClientBase {
         this.realtimeAutoReconnect = true;
         this.realtimeReconnectDelayMs = 3000;
         this.realtimeStatus = "idle";
-        this._applyRealtimeOptions(options.realtime);
+        this.applyRealtimeOptions(options.realtime);
         if (
             typeof options.healthTickInterval === "number" &&
             options.healthTickInterval > 0
         ) {
-            // _csrfRefresher는 AuthMixin에서 설정되므로 다음 tick에 시작
+            // csrfRefresher는 AuthMixin에서 설정되므로 다음 tick에 시작
             Promise.resolve().then(() =>
                 this.startHealthTick(options.healthTickInterval),
             );
@@ -129,7 +129,7 @@ export class EntityServerClientBase {
         if (options.onHealthChange)
             this.onHealthChange = options.onHealthChange;
         if (typeof options.realtime !== "undefined") {
-            this._applyRealtimeOptions(options.realtime);
+            this.applyRealtimeOptions(options.realtime);
         }
         if (
             typeof options.healthTickInterval === "number" &&
@@ -178,19 +178,19 @@ export class EntityServerClientBase {
     }
 
     addRealtimeListener(listener: RealtimeMessageListener): void {
-        this._realtimeMessageListeners.add(listener);
+        this.realtimeMessageListeners.add(listener);
     }
 
     removeRealtimeListener(listener: RealtimeMessageListener): void {
-        this._realtimeMessageListeners.delete(listener);
+        this.realtimeMessageListeners.delete(listener);
     }
 
     addRealtimeStatusListener(listener: RealtimeStatusListener): void {
-        this._realtimeStatusListeners.add(listener);
+        this.realtimeStatusListeners.add(listener);
     }
 
     removeRealtimeStatusListener(listener: RealtimeStatusListener): void {
-        this._realtimeStatusListeners.delete(listener);
+        this.realtimeStatusListeners.delete(listener);
     }
 
     addRealtimeEventListener(
@@ -201,10 +201,10 @@ export class EntityServerClientBase {
         if (!key) {
             return;
         }
-        if (!this._realtimeEventListeners.has(key)) {
-            this._realtimeEventListeners.set(key, new Set());
+        if (!this.realtimeEventListeners.has(key)) {
+            this.realtimeEventListeners.set(key, new Set());
         }
-        this._realtimeEventListeners.get(key)!.add(listener);
+        this.realtimeEventListeners.get(key)!.add(listener);
     }
 
     removeRealtimeEventListener(
@@ -215,19 +215,19 @@ export class EntityServerClientBase {
         if (!key) {
             return;
         }
-        const listeners = this._realtimeEventListeners.get(key);
+        const listeners = this.realtimeEventListeners.get(key);
         if (!listeners) {
             return;
         }
         listeners.delete(listener);
         if (listeners.size === 0) {
-            this._realtimeEventListeners.delete(key);
+            this.realtimeEventListeners.delete(key);
         }
     }
 
     async connectRealtime(): Promise<void> {
         if (!this.realtimeEnabled) {
-            this._setRealtimeStatus("disabled", "realtime_disabled");
+            this.setRealtimeStatus("disabled", "realtime_disabled");
             return;
         }
 
@@ -240,28 +240,28 @@ export class EntityServerClientBase {
         }
 
         if (
-            this._realtimeSocket &&
-            this._realtimeSocket.readyState === WebSocket.OPEN
+            this.realtimeSocket &&
+            this.realtimeSocket.readyState === WebSocket.OPEN
         ) {
             return;
         }
 
         if (
-            this._realtimeSocket &&
-            this._realtimeSocket.readyState === WebSocket.CONNECTING &&
-            this._realtimeConnectPromise
+            this.realtimeSocket &&
+            this.realtimeSocket.readyState === WebSocket.CONNECTING &&
+            this.realtimeConnectPromise
         ) {
-            return this._realtimeConnectPromise;
+            return this.realtimeConnectPromise;
         }
 
-        this._clearRealtimeReconnectTimer();
-        this._realtimeShouldReconnect = this.realtimeAutoReconnect;
-        this._setRealtimeStatus("connecting", "connect_requested");
+        this.clearRealtimeReconnectTimer();
+        this.realtimeShouldReconnect = this.realtimeAutoReconnect;
+        this.setRealtimeStatus("connecting", "connect_requested");
 
-        const socket = new WebSocket(this._buildRealtimeUrl());
-        this._realtimeSocket = socket;
+        const socket = new WebSocket(this.buildRealtimeUrl());
+        this.realtimeSocket = socket;
 
-        this._realtimeConnectPromise = new Promise<void>((resolve, reject) => {
+        this.realtimeConnectPromise = new Promise<void>((resolve, reject) => {
             let settled = false;
 
             const finalizeResolve = () => {
@@ -269,7 +269,7 @@ export class EntityServerClientBase {
                     return;
                 }
                 settled = true;
-                this._realtimeConnectPromise = null;
+                this.realtimeConnectPromise = null;
                 resolve();
             };
 
@@ -278,21 +278,21 @@ export class EntityServerClientBase {
                     return;
                 }
                 settled = true;
-                this._realtimeConnectPromise = null;
+                this.realtimeConnectPromise = null;
                 reject(error);
             };
 
             socket.addEventListener("open", () => {
-                this._setRealtimeStatus("open", "socket_open");
+                this.setRealtimeStatus("open", "socket_open");
                 finalizeResolve();
             });
 
             socket.addEventListener("message", (event) => {
-                this._handleRealtimeMessage(event.data);
+                this.handleRealtimeMessage(event.data);
             });
 
             socket.addEventListener("error", () => {
-                this._setRealtimeStatus(
+                this.setRealtimeStatus(
                     "closed",
                     "socket_error",
                     new Error("Realtime socket error."),
@@ -300,8 +300,8 @@ export class EntityServerClientBase {
             });
 
             socket.addEventListener("close", (event) => {
-                if (this._realtimeSocket === socket) {
-                    this._realtimeSocket = null;
+                if (this.realtimeSocket === socket) {
+                    this.realtimeSocket = null;
                 }
 
                 const reason = event.reason || "socket_closed";
@@ -309,32 +309,32 @@ export class EntityServerClientBase {
                     `Realtime socket closed (${event.code}${event.reason ? `: ${event.reason}` : ""}).`,
                 );
 
-                this._setRealtimeStatus("closed", reason, error);
+                this.setRealtimeStatus("closed", reason, error);
                 if (!settled) {
                     finalizeReject(error);
                 }
 
                 if (
-                    this._realtimeShouldReconnect &&
+                    this.realtimeShouldReconnect &&
                     this.realtimeEnabled &&
                     this.realtimeAutoReconnect &&
                     this.token
                 ) {
-                    this._scheduleRealtimeReconnect(reason);
+                    this.scheduleRealtimeReconnect(reason);
                 }
             });
         });
 
-        return this._realtimeConnectPromise;
+        return this.realtimeConnectPromise;
     }
 
     disconnectRealtime(reason = "client_disconnect"): void {
-        this._realtimeShouldReconnect = false;
-        this._clearRealtimeReconnectTimer();
+        this.realtimeShouldReconnect = false;
+        this.clearRealtimeReconnectTimer();
 
-        if (this._realtimeSocket) {
-            const socket = this._realtimeSocket;
-            this._realtimeSocket = null;
+        if (this.realtimeSocket) {
+            const socket = this.realtimeSocket;
+            this.realtimeSocket = null;
             try {
                 if (
                     socket.readyState === WebSocket.OPEN ||
@@ -347,8 +347,8 @@ export class EntityServerClientBase {
             }
         }
 
-        this._realtimeConnectPromise = null;
-        this._setRealtimeStatus(
+        this.realtimeConnectPromise = null;
+        this.setRealtimeStatus(
             this.realtimeEnabled ? "idle" : "disabled",
             reason,
         );
@@ -356,13 +356,13 @@ export class EntityServerClientBase {
 
     sendRealtime(message: RealtimeEnvelope | Record<string, unknown>): boolean {
         if (
-            !this._realtimeSocket ||
-            this._realtimeSocket.readyState !== WebSocket.OPEN
+            !this.realtimeSocket ||
+            this.realtimeSocket.readyState !== WebSocket.OPEN
         ) {
             return false;
         }
 
-        this._realtimeSocket.send(JSON.stringify(message));
+        this.realtimeSocket.send(JSON.stringify(message));
         return true;
     }
 
@@ -394,9 +394,9 @@ export class EntityServerClientBase {
     startHealthTick(intervalMs: number = 5 * 60 * 1000): void {
         this.stopHealthTick();
         const tick = (): void => {
-            if (this._healthTickPromise) return;
-            this._healthTickPromise = (
-                this._csrfRefresher ? this._csrfRefresher() : Promise.resolve()
+            if (this.healthTickPromise) return;
+            this.healthTickPromise = (
+                this.csrfRefresher ? this.csrfRefresher() : Promise.resolve()
             )
                 .then(() => {
                     this.onHealthChange?.(true);
@@ -405,47 +405,47 @@ export class EntityServerClientBase {
                     this.onHealthChange?.(false);
                 })
                 .finally(() => {
-                    this._healthTickPromise = null;
+                    this.healthTickPromise = null;
                 });
         };
         tick(); // 즉시 1회 실행
-        this._healthTickTimer = setInterval(tick, intervalMs);
+        this.healthTickTimer = setInterval(tick, intervalMs);
     }
 
     /** health tick 타이머를 중지합니다. */
     stopHealthTick(): void {
-        if (this._healthTickTimer !== null) {
-            clearInterval(this._healthTickTimer);
-            this._healthTickTimer = null;
+        if (this.healthTickTimer !== null) {
+            clearInterval(this.healthTickTimer);
+            this.healthTickTimer = null;
         }
-        this._healthTickPromise = null;
+        this.healthTickPromise = null;
     }
 
     // ─── 세션 유지 ────────────────────────────────────────────────────────────
 
     /** @deprecated 세션 연장은 health tick 기반 부트스트랩으로 대체되었습니다. */
-    _scheduleKeepSession(
+    scheduleKeepSession(
         refreshToken: string,
         expiresIn: number,
         refreshFn: (
             rt: string,
         ) => Promise<{ access_token: string; expires_in: number }>,
     ): void {
-        this._clearRefreshTimer();
-        this._sessionRefreshToken = refreshToken;
+        this.clearRefreshTimer();
+        this.sessionRefreshToken = refreshToken;
         const delayMs = Math.max((expiresIn - this.refreshBuffer) * 1000, 0);
-        this._refreshTimer = setTimeout(async () => {
-            if (!this._sessionRefreshToken) return;
+        this.refreshTimer = setTimeout(async () => {
+            if (!this.sessionRefreshToken) return;
             try {
-                const result = await refreshFn(this._sessionRefreshToken);
+                const result = await refreshFn(this.sessionRefreshToken);
                 this.onTokenRefreshed?.(result.access_token, result.expires_in);
-                this._scheduleKeepSession(
-                    this._sessionRefreshToken,
+                this.scheduleKeepSession(
+                    this.sessionRefreshToken,
                     result.expires_in,
                     refreshFn,
                 );
             } catch (err) {
-                this._clearRefreshTimer();
+                this.clearRefreshTimer();
                 this.onSessionExpired?.(
                     err instanceof Error ? err : new Error(String(err)),
                 );
@@ -454,10 +454,10 @@ export class EntityServerClientBase {
     }
 
     /** @deprecated 세션 연장은 health tick 기반 부트스트랩으로 대체되었습니다. */
-    _clearRefreshTimer(): void {
-        if (this._refreshTimer !== null) {
-            clearTimeout(this._refreshTimer);
-            this._refreshTimer = null;
+    clearRefreshTimer(): void {
+        if (this.refreshTimer !== null) {
+            clearTimeout(this.refreshTimer);
+            this.refreshTimer = null;
         }
     }
 
@@ -466,11 +466,11 @@ export class EntityServerClientBase {
      * `logout()` 호출 시 자동으로 중지되며, 직접 호출이 필요한 경우는 드뭅니다.
      */
     stopKeepSession(): void {
-        this._clearRefreshTimer();
-        this._sessionRefreshToken = null;
+        this.clearRefreshTimer();
+        this.sessionRefreshToken = null;
     }
 
-    _applyRealtimeOptions(options?: boolean | RealtimeClientOptions): void {
+    applyRealtimeOptions(options?: boolean | RealtimeClientOptions): void {
         const normalized: RealtimeClientOptions =
             typeof options === "boolean"
                 ? { enabled: options }
@@ -492,13 +492,13 @@ export class EntityServerClientBase {
             return;
         }
 
-        this._setRealtimeStatus("idle", "realtime_enabled");
+        this.setRealtimeStatus("idle", "realtime_enabled");
         if (this.token && this.realtimeAutoConnect) {
             void this.connectRealtime().catch(() => {});
         }
     }
 
-    _buildRealtimeUrl(): string {
+    buildRealtimeUrl(): string {
         const rawBaseUrl = this.baseUrl || readEnv("VITE_ENTITY_SERVER_URL") || "";
         const baseUrl = rawBaseUrl ||
             (typeof window !== "undefined" ? window.location.origin : "");
@@ -513,7 +513,7 @@ export class EntityServerClientBase {
         return url.toString();
     }
 
-    _handleRealtimeMessage(payload: unknown): void {
+    handleRealtimeMessage(payload: unknown): void {
         if (typeof payload !== "string") {
             return;
         }
@@ -525,11 +525,11 @@ export class EntityServerClientBase {
             return;
         }
 
-        for (const listener of this._realtimeMessageListeners) {
+        for (const listener of this.realtimeMessageListeners) {
             listener(envelope);
         }
 
-        const listeners = this._realtimeEventListeners.get(envelope.event);
+        const listeners = this.realtimeEventListeners.get(envelope.event);
         if (listeners) {
             for (const listener of listeners) {
                 listener(envelope);
@@ -537,26 +537,26 @@ export class EntityServerClientBase {
         }
     }
 
-    _scheduleRealtimeReconnect(reason: string): void {
-        this._clearRealtimeReconnectTimer();
-        this._realtimeReconnectTimer = setTimeout(() => {
-            this._realtimeReconnectTimer = null;
+    scheduleRealtimeReconnect(reason: string): void {
+        this.clearRealtimeReconnectTimer();
+        this.realtimeReconnectTimer = setTimeout(() => {
+            this.realtimeReconnectTimer = null;
             if (!this.realtimeEnabled || !this.token) {
                 return;
             }
-            this._setRealtimeStatus("connecting", `${reason}:reconnect`);
+            this.setRealtimeStatus("connecting", `${reason}:reconnect`);
             void this.connectRealtime().catch(() => {});
         }, this.realtimeReconnectDelayMs);
     }
 
-    _clearRealtimeReconnectTimer(): void {
-        if (this._realtimeReconnectTimer !== null) {
-            clearTimeout(this._realtimeReconnectTimer);
-            this._realtimeReconnectTimer = null;
+    clearRealtimeReconnectTimer(): void {
+        if (this.realtimeReconnectTimer !== null) {
+            clearTimeout(this.realtimeReconnectTimer);
+            this.realtimeReconnectTimer = null;
         }
     }
 
-    _setRealtimeStatus(
+    setRealtimeStatus(
         status: RealtimeConnectionStatus,
         reason?: string,
         error?: Error,
@@ -571,7 +571,7 @@ export class EntityServerClientBase {
         }
 
         this.realtimeStatus = status;
-        for (const listener of this._realtimeStatusListeners) {
+        for (const listener of this.realtimeStatusListeners) {
             listener({
                 status,
                 previousStatus,
@@ -581,7 +581,7 @@ export class EntityServerClientBase {
         }
     }
 
-    _applyCsrfHealth(): void {
+    applyCsrfHealth(): void {
         if (typeof document === "undefined") return;
         for (const chunk of document.cookie.split(";")) {
             const idx = chunk.indexOf("=");
@@ -616,7 +616,7 @@ export class EntityServerClientBase {
 
     // ─── 내부 헬퍼 ───────────────────────────────────────────────────────────
 
-    get _reqOpts(): RequestOptions {
+    get reqOpts(): RequestOptions {
         return {
             baseUrl: this.baseUrl,
             token: this.token,
@@ -627,7 +627,7 @@ export class EntityServerClientBase {
             csrfEnabled: this.csrfEnabled,
             csrfHeaderName: this.csrfHeaderName,
             csrfCookieName: this.csrfCookieName,
-            refreshCsrfCookie: this.csrfEnabled ? this._csrfRefresher : null,
+            refreshCsrfCookie: this.csrfEnabled ? this.csrfRefresher : null,
             onAccessToken: (token) => {
                 this.token = token;
             },
@@ -652,7 +652,7 @@ export class EntityServerClientBase {
                 extraHeaders?: Record<string, string>,
             ): Promise<T> {
                 return entityRequest<T>(
-                    self._reqOpts,
+                    self.reqOpts,
                     "GET",
                     path,
                     undefined,
@@ -668,7 +668,7 @@ export class EntityServerClientBase {
                 extraHeaders?: Record<string, string>,
             ): Promise<T> {
                 return entityRequest<T>(
-                    self._reqOpts,
+                    self.reqOpts,
                     "POST",
                     path,
                     body,
@@ -684,7 +684,7 @@ export class EntityServerClientBase {
                 extraHeaders?: Record<string, string>,
             ): Promise<T> {
                 return entityRequest<T>(
-                    self._reqOpts,
+                    self.reqOpts,
                     "PUT",
                     path,
                     body,
@@ -700,7 +700,7 @@ export class EntityServerClientBase {
                 extraHeaders?: Record<string, string>,
             ): Promise<T> {
                 return entityRequest<T>(
-                    self._reqOpts,
+                    self.reqOpts,
                     "PATCH",
                     path,
                     body,
@@ -716,7 +716,7 @@ export class EntityServerClientBase {
                 extraHeaders?: Record<string, string>,
             ): Promise<T> {
                 return entityRequest<T>(
-                    self._reqOpts,
+                    self.reqOpts,
                     "DELETE",
                     path,
                     body,
@@ -728,45 +728,7 @@ export class EntityServerClientBase {
         };
     }
 
-    /**
-     * 임의 경로에 요청을 보내고 바이너리(ArrayBuffer)를 반환합니다.
-     * 이미지, PDF, 압축 파일 등 바이너리 응답이 오는 엔드포인트에 사용합니다.
-     */
-    requestBinary(
-        method: string,
-        path: string,
-        body?: unknown,
-        withAuth = true,
-    ): Promise<ArrayBuffer> {
-        return this._requestBinary(method, path, body, withAuth);
-    }
-
-    /**
-     * multipart/form-data 요청을 보냅니다. 파일 업로드 등에 사용합니다.
-     * 응답은 JSON으로 파싱하여 반환합니다.
-     */
-    requestForm<T>(
-        method: string,
-        path: string,
-        form: FormData,
-        withAuth = true,
-    ): Promise<T> {
-        return this._requestForm<T>(method, path, form, withAuth);
-    }
-
-    /**
-     * multipart/form-data 요청을 보내고 바이너리(ArrayBuffer)를 반환합니다.
-     */
-    requestFormBinary(
-        method: string,
-        path: string,
-        form: FormData,
-        withAuth = true,
-    ): Promise<ArrayBuffer> {
-        return this._requestFormBinary(method, path, form, withAuth);
-    }
-
-    _request<T>(
+    request<T>(
         method: string,
         path: string,
         body?: unknown,
@@ -774,7 +736,7 @@ export class EntityServerClientBase {
         extraHeaders?: Record<string, string>,
     ): Promise<T> {
         return entityRequest<T>(
-            this._reqOpts,
+            this.reqOpts,
             method,
             path,
             body,
@@ -785,7 +747,7 @@ export class EntityServerClientBase {
     }
 
     /** PNG/바이너리 응답을 ArrayBuffer로 반환합니다. (QR, 바코드 등) */
-    async _requestBinary(
+    async requestBinary(
         method: string,
         path: string,
         body?: unknown,
@@ -816,7 +778,7 @@ export class EntityServerClientBase {
     }
 
     /** multipart/form-data 요청을 보냅니다. (파일 업로드 등) */
-    async _requestForm<T>(
+    async requestForm<T>(
         method: string,
         path: string,
         form: FormData,
@@ -846,7 +808,7 @@ export class EntityServerClientBase {
     }
 
     /** multipart/form-data 요청을 보내고 바이너리(ArrayBuffer)를 반환합니다. */
-    async _requestFormBinary(
+    async requestFormBinary(
         method: string,
         path: string,
         form: FormData,

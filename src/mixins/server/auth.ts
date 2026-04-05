@@ -60,7 +60,7 @@ export function AuthMixin<TBase extends GConstructor<EntityServerClientBase>>(
 ) {
     return class AuthMixinClass extends Base {
         // health tick이 켜져 있으면 keepSession 여부에 따라 세션 부트스트랩까지 함께 처리합니다.
-        _csrfRefresher = (): Promise<void> =>
+        csrfRefresher = (): Promise<void> =>
             this.checkHealth(this.keepSession).then(() => {});
 
         // ─── 인증 ─────────────────────────────────────────────────────────────
@@ -114,13 +114,13 @@ export function AuthMixin<TBase extends GConstructor<EntityServerClientBase>>(
             }
 
             // 패킷 암호화는 health 응답이 명시적으로 활성이라고 알려줄 때만 자동 활성화한다.
-            const anonToken = this._readCookie("anon_token");
+            const anonToken = this.readCookie("anon_token");
             if (data.packet_encryption === true && anonToken) {
                 this.anonymousPacketToken = anonToken;
                 this.encryptRequests = true;
             }
 
-            this._applyCsrfHealth();
+            this.applyCsrfHealth();
             if (
                 bootstrapAuth &&
                 data.authenticated === false &&
@@ -133,7 +133,7 @@ export function AuthMixin<TBase extends GConstructor<EntityServerClientBase>>(
         }
 
         /** document.cookie 또는 Node 환경에서 쿠키 값 읽기 (SSR 대응) */
-        _readCookie(name: string): string | null {
+        readCookie(name: string): string | null {
             if (typeof document === "undefined") return null;
             const match = document.cookie
                 .split(";")
@@ -147,7 +147,7 @@ export function AuthMixin<TBase extends GConstructor<EntityServerClientBase>>(
             }
         }
 
-        async _ensurePublicAuthBootstrap(): Promise<void> {
+        async ensurePublicAuthBootstrap(): Promise<void> {
             if (typeof document === "undefined") {
                 return;
             }
@@ -157,8 +157,8 @@ export function AuthMixin<TBase extends GConstructor<EntityServerClientBase>>(
             }
 
             const hasAnonymousPacketToken =
-                !!this.anonymousPacketToken || !!this._readCookie("anon_token");
-            const hasCsrfCookie = !!this._readCookie(this.csrfCookieName);
+                !!this.anonymousPacketToken || !!this.readCookie("anon_token");
+            const hasCsrfCookie = !!this.readCookie(this.csrfCookieName);
 
             if (hasAnonymousPacketToken && hasCsrfCookie && this.csrfEnabled) {
                 return;
@@ -172,10 +172,10 @@ export function AuthMixin<TBase extends GConstructor<EntityServerClientBase>>(
             email: string,
             password: string,
         ): Promise<AuthLoginResponse> {
-            await this._ensurePublicAuthBootstrap();
+            await this.ensurePublicAuthBootstrap();
 
             const response = await entityRequest<AuthLoginResponse>(
-                this._reqOpts,
+                this.reqOpts,
                 "POST",
                 "/v1/auth/login",
                 { email, passwd: password },
@@ -186,8 +186,8 @@ export function AuthMixin<TBase extends GConstructor<EntityServerClientBase>>(
 
             if (isAuthLoginSuccessResponse(response)) {
                 this.token = response.data.access_token;
-                this._applyCsrfHealth();
-                if (this.keepSession && this._healthTickTimer === null) {
+                this.applyCsrfHealth();
+                if (this.keepSession && this.healthTickTimer === null) {
                     this.startHealthTick();
                 }
                 if (this.realtimeEnabled && this.realtimeAutoConnect) {
@@ -204,7 +204,7 @@ export function AuthMixin<TBase extends GConstructor<EntityServerClientBase>>(
             refresh_token: string;
             expires_in: number;
         }> {
-            const data = await this._request<{
+            const data = await this.request<{
                 data: {
                     access_token: string;
                     refresh_token: string;
@@ -212,7 +212,7 @@ export function AuthMixin<TBase extends GConstructor<EntityServerClientBase>>(
                 };
             }>("POST", "/v1/auth/token_refresh", undefined, false);
             this.token = data.data.access_token;
-            this._applyCsrfHealth();
+            this.applyCsrfHealth();
             return data.data;
         }
 
@@ -226,7 +226,7 @@ export function AuthMixin<TBase extends GConstructor<EntityServerClientBase>>(
                 return this.tokenRefresh();
             }
 
-            const data = await this._request<{
+            const data = await this.request<{
                 data: {
                     access_token: string;
                     refresh_token: string;
@@ -239,7 +239,7 @@ export function AuthMixin<TBase extends GConstructor<EntityServerClientBase>>(
                 false,
             );
             this.token = data.data.access_token;
-            this._applyCsrfHealth();
+            this.applyCsrfHealth();
             return data.data;
         }
 
@@ -251,25 +251,25 @@ export function AuthMixin<TBase extends GConstructor<EntityServerClientBase>>(
             this.stopKeepSession();
             this.stopHealthTick();
             this.disconnectRealtime("logout");
-            const data = await this._request<{ ok: boolean }>(
+            const data = await this.request<{ ok: boolean }>(
                 "POST",
                 "/v1/auth/logout",
                 refreshToken ? { refresh_token: refreshToken } : undefined,
                 false,
             );
             this.token = "";
-            this._applyCsrfHealth();
+            this.applyCsrfHealth();
             return data;
         }
 
         /** 현재 로그인된 사용자 정보를 반환합니다. */
         me<T = Record<string, unknown>>(): Promise<{ ok: boolean; data: T }> {
-            return this._request("GET", "/v1/auth/me");
+            return this.request("GET", "/v1/auth/me");
         }
 
         /** 회원 탈퇴를 요청합니다. */
         withdraw(passwd?: string): Promise<{ ok: boolean }> {
-            return this._request(
+            return this.request(
                 "POST",
                 "/v1/auth/withdraw",
                 passwd ? { passwd } : {},

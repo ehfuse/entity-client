@@ -61,7 +61,7 @@ export function UtilsMixin<TBase extends GConstructor<EntityServerClientBase>>(
             content: string,
             opts: QRCodeOptions = {},
         ): Promise<ArrayBuffer> {
-            return this._requestBinary("POST", "/v1/utils/qrcode", {
+            return this.requestBinary("POST", "/v1/utils/qrcode", {
                 content,
                 ...opts,
             });
@@ -79,7 +79,7 @@ export function UtilsMixin<TBase extends GConstructor<EntityServerClientBase>>(
             content: string,
             opts: QRCodeOptions = {},
         ): Promise<{ ok: boolean; data: string; data_uri: string }> {
-            return this._request("POST", "/v1/utils/qrcode/base64", {
+            return this.request("POST", "/v1/utils/qrcode/base64", {
                 content,
                 ...opts,
             });
@@ -90,7 +90,7 @@ export function UtilsMixin<TBase extends GConstructor<EntityServerClientBase>>(
             content: string,
             opts: QRCodeOptions = {},
         ): Promise<{ ok: boolean; text: string }> {
-            return this._request("POST", "/v1/utils/qrcode/text", {
+            return this.request("POST", "/v1/utils/qrcode/text", {
                 content,
                 ...opts,
             });
@@ -107,7 +107,7 @@ export function UtilsMixin<TBase extends GConstructor<EntityServerClientBase>>(
             content: string,
             opts: BarcodeOptions = {},
         ): Promise<ArrayBuffer> {
-            return this._requestBinary("POST", "/v1/utils/barcode", {
+            return this.requestBinary("POST", "/v1/utils/barcode", {
                 content,
                 ...opts,
             });
@@ -141,7 +141,7 @@ export function UtilsMixin<TBase extends GConstructor<EntityServerClientBase>>(
                 params.set("last_page", String(opts.lastPage));
             const qs = params.toString();
             const path = "/v1/utils/pdf2png" + (qs ? `?${qs}` : "");
-            return this._requestFormBinary("POST", path, form);
+            return this.requestFormBinary("POST", path, form);
         }
 
         pdf2pngByFileSeq(
@@ -173,7 +173,7 @@ export function UtilsMixin<TBase extends GConstructor<EntityServerClientBase>>(
                 params.set("last_page", String(opts.lastPage));
             const qs = params.toString();
             const path = "/v1/utils/pdf2jpg" + (qs ? `?${qs}` : "");
-            return this._requestFormBinary("POST", path, form);
+            return this.requestFormBinary("POST", path, form);
         }
 
         pdf2jpgByFileSeq(

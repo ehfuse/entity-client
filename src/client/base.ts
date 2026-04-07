@@ -232,7 +232,9 @@ export class EntityServerClientBase {
         }
 
         if (!this.token) {
-            throw new Error("Cannot open realtime connection without access token.");
+            throw new Error(
+                "Cannot open realtime connection without access token.",
+            );
         }
 
         if (typeof WebSocket === "undefined") {
@@ -499,8 +501,10 @@ export class EntityServerClientBase {
     }
 
     buildRealtimeUrl(): string {
-        const rawBaseUrl = this.baseUrl || readEnv("VITE_ENTITY_SERVER_URL") || "";
-        const baseUrl = rawBaseUrl ||
+        const rawBaseUrl =
+            this.baseUrl || readEnv("VITE_ENTITY_SERVER_URL") || "";
+        const baseUrl =
+            rawBaseUrl ||
             (typeof window !== "undefined" ? window.location.origin : "");
 
         if (!baseUrl) {
@@ -634,6 +638,11 @@ export class EntityServerClientBase {
         };
     }
 
+    // 인증 요청 전에 필요한 클라이언트 준비 작업을 수행합니다.
+    prepareRequest(_withAuth: boolean): Promise<void> {
+        return Promise.resolve();
+    }
+
     /**
      * 커스텀 라우트 직접 호출용 HTTP 네임스페이스.
      * 인증·암호화·HMAC 등 SDK 옵션이 그대로 적용됩니다.
@@ -651,15 +660,19 @@ export class EntityServerClientBase {
                 withAuth = true,
                 extraHeaders?: Record<string, string>,
             ): Promise<T> {
-                return entityRequest<T>(
-                    self.reqOpts,
-                    "GET",
-                    path,
-                    undefined,
-                    withAuth,
-                    extraHeaders,
-                    false,
-                );
+                return self
+                    .prepareRequest(withAuth)
+                    .then(() =>
+                        entityRequest<T>(
+                            self.reqOpts,
+                            "GET",
+                            path,
+                            undefined,
+                            withAuth,
+                            extraHeaders,
+                            true,
+                        ),
+                    );
             },
             post<T>(
                 path: string,
@@ -667,15 +680,19 @@ export class EntityServerClientBase {
                 withAuth = true,
                 extraHeaders?: Record<string, string>,
             ): Promise<T> {
-                return entityRequest<T>(
-                    self.reqOpts,
-                    "POST",
-                    path,
-                    body,
-                    withAuth,
-                    extraHeaders,
-                    false,
-                );
+                return self
+                    .prepareRequest(withAuth)
+                    .then(() =>
+                        entityRequest<T>(
+                            self.reqOpts,
+                            "POST",
+                            path,
+                            body,
+                            withAuth,
+                            extraHeaders,
+                            true,
+                        ),
+                    );
             },
             put<T>(
                 path: string,
@@ -683,15 +700,19 @@ export class EntityServerClientBase {
                 withAuth = true,
                 extraHeaders?: Record<string, string>,
             ): Promise<T> {
-                return entityRequest<T>(
-                    self.reqOpts,
-                    "PUT",
-                    path,
-                    body,
-                    withAuth,
-                    extraHeaders,
-                    false,
-                );
+                return self
+                    .prepareRequest(withAuth)
+                    .then(() =>
+                        entityRequest<T>(
+                            self.reqOpts,
+                            "PUT",
+                            path,
+                            body,
+                            withAuth,
+                            extraHeaders,
+                            true,
+                        ),
+                    );
             },
             patch<T>(
                 path: string,
@@ -699,15 +720,19 @@ export class EntityServerClientBase {
                 withAuth = true,
                 extraHeaders?: Record<string, string>,
             ): Promise<T> {
-                return entityRequest<T>(
-                    self.reqOpts,
-                    "PATCH",
-                    path,
-                    body,
-                    withAuth,
-                    extraHeaders,
-                    false,
-                );
+                return self
+                    .prepareRequest(withAuth)
+                    .then(() =>
+                        entityRequest<T>(
+                            self.reqOpts,
+                            "PATCH",
+                            path,
+                            body,
+                            withAuth,
+                            extraHeaders,
+                            true,
+                        ),
+                    );
             },
             delete<T>(
                 path: string,
@@ -715,15 +740,19 @@ export class EntityServerClientBase {
                 withAuth = true,
                 extraHeaders?: Record<string, string>,
             ): Promise<T> {
-                return entityRequest<T>(
-                    self.reqOpts,
-                    "DELETE",
-                    path,
-                    body,
-                    withAuth,
-                    extraHeaders,
-                    false,
-                );
+                return self
+                    .prepareRequest(withAuth)
+                    .then(() =>
+                        entityRequest<T>(
+                            self.reqOpts,
+                            "DELETE",
+                            path,
+                            body,
+                            withAuth,
+                            extraHeaders,
+                            true,
+                        ),
+                    );
             },
         };
     }
@@ -735,14 +764,16 @@ export class EntityServerClientBase {
         withAuth = true,
         extraHeaders?: Record<string, string>,
     ): Promise<T> {
-        return entityRequest<T>(
-            this.reqOpts,
-            method,
-            path,
-            body,
-            withAuth,
-            extraHeaders,
-            true,
+        return this.prepareRequest(withAuth).then(() =>
+            entityRequest<T>(
+                this.reqOpts,
+                method,
+                path,
+                body,
+                withAuth,
+                extraHeaders,
+                true,
+            ),
         );
     }
 
@@ -753,6 +784,8 @@ export class EntityServerClientBase {
         body?: unknown,
         withAuth = true,
     ): Promise<ArrayBuffer> {
+        await this.prepareRequest(withAuth);
+
         const headers: Record<string, string> = {
             "Content-Type": "application/json",
         };

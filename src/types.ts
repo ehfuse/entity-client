@@ -177,13 +177,9 @@ export interface RealtimeClientOptions {
     reconnectDelayMs?: number;
 }
 
-export type RealtimeMessageListener = (
-    envelope: RealtimeEnvelope,
-) => void;
+export type RealtimeMessageListener = (envelope: RealtimeEnvelope) => void;
 
-export type RealtimeStatusListener = (
-    change: RealtimeStatusChange,
-) => void;
+export type RealtimeStatusListener = (change: RealtimeStatusChange) => void;
 
 // ─── 클라이언트 옵션 ──────────────────────────────────────────────────────────
 
@@ -256,7 +252,7 @@ export interface EntityServerClientOptions {
      */
     onSessionExpired?: (error: Error) => void;
     /**
-     * `healthTickInterval` 설정 시 health tick마다 서버 접속 가능 여부를 알려줍니다.
+     * health tick 또는 자동 부트스트랩 health 호출 결과를 알려줍니다.
      *
      * - `online: true`  — health 호출 성공
      * - `online: false` — health 호출 실패 (서버 오류 / 네트워크 단절)

@@ -59,6 +59,10 @@ export function AuthMixin<TBase extends GConstructor<EntityServerClientBase>>(
     Base: TBase,
 ) {
     return class AuthMixinClass extends Base {
+        authBootstrapPromise: Promise<void> | null = null;
+        authBootstrapToken = "";
+        authBootstrapAnonymousCompleted = false;
+
         // health tick이 켜져 있으면 keepSession 여부에 따라 세션 부트스트랩까지 함께 처리합니다.
         csrfRefresher = (): Promise<void> =>
             this.checkHealth(this.keepSession).then(() => {});
@@ -80,56 +84,62 @@ export function AuthMixin<TBase extends GConstructor<EntityServerClientBase>>(
             authenticated?: boolean;
             packet_encryption?: boolean;
         }> {
-            const previousToken = this.token;
-            const headers: Record<string, string> = {};
-            if (bootstrapAuth) {
-                headers["X-Session-Bootstrap"] = "1";
-            }
-
-            const res = await fetch(`${this.baseUrl}/v1/health`, {
-                signal: AbortSignal.timeout(3000),
-                credentials: "include",
-                headers,
-            });
-            const data = (await res.json()) as {
-                status: string;
-                authenticated?: boolean;
-                packet_encryption?: boolean;
-            };
-
-            const accessToken = res.headers.get("X-Access-Token");
-            if (accessToken) {
-                this.token = accessToken;
-                if (bootstrapAuth && accessToken !== previousToken) {
-                    this.onTokenRefreshed?.(accessToken, 0);
+            try {
+                const previousToken = this.token;
+                const headers: Record<string, string> = {};
+                if (bootstrapAuth) {
+                    headers["X-Session-Bootstrap"] = "1";
                 }
+
+                const res = await fetch(`${this.baseUrl}/v1/health`, {
+                    signal: AbortSignal.timeout(3000),
+                    credentials: "include",
+                    headers,
+                });
+                const data = (await res.json()) as {
+                    status: string;
+                    authenticated?: boolean;
+                    packet_encryption?: boolean;
+                };
+
+                const accessToken = res.headers.get("X-Access-Token");
+                if (accessToken) {
+                    this.token = accessToken;
+                    if (bootstrapAuth && accessToken !== previousToken) {
+                        this.onTokenRefreshed?.(accessToken, 0);
+                    }
+                    if (
+                        bootstrapAuth &&
+                        data.authenticated === true &&
+                        this.realtimeEnabled &&
+                        this.realtimeAutoConnect
+                    ) {
+                        this.connectRealtime().catch(() => {});
+                    }
+                }
+
+                // 패킷 암호화는 health 응답이 명시적으로 활성이라고 알려줄 때만 자동 활성화한다.
+                const anonToken = this.readCookie("anon_token");
+                if (data.packet_encryption === true && anonToken) {
+                    this.anonymousPacketToken = anonToken;
+                    this.encryptRequests = true;
+                }
+
+                this.applyCsrfHealth();
+                this.onHealthChange?.(true);
                 if (
                     bootstrapAuth &&
-                    data.authenticated === true &&
-                    this.realtimeEnabled &&
-                    this.realtimeAutoConnect
+                    data.authenticated === false &&
+                    previousToken
                 ) {
-                    this.connectRealtime().catch(() => {});
+                    this.disconnectRealtime("session_expired");
+                    this.onSessionExpired?.(new Error("Session expired"));
                 }
+                return data;
+            } catch (error) {
+                this.onHealthChange?.(false);
+                throw error;
             }
-
-            // 패킷 암호화는 health 응답이 명시적으로 활성이라고 알려줄 때만 자동 활성화한다.
-            const anonToken = this.readCookie("anon_token");
-            if (data.packet_encryption === true && anonToken) {
-                this.anonymousPacketToken = anonToken;
-                this.encryptRequests = true;
-            }
-
-            this.applyCsrfHealth();
-            if (
-                bootstrapAuth &&
-                data.authenticated === false &&
-                previousToken
-            ) {
-                this.disconnectRealtime("session_expired");
-                this.onSessionExpired?.(new Error("Session expired"));
-            }
-            return data;
         }
 
         /** document.cookie 또는 Node 환경에서 쿠키 값 읽기 (SSR 대응) */
@@ -165,6 +175,53 @@ export function AuthMixin<TBase extends GConstructor<EntityServerClientBase>>(
             }
 
             await this.checkHealth(false);
+        }
+
+        // 인증 요청 전에 health 기반 세션 부트스트랩을 한 번 보장합니다.
+        async ensureAuthenticatedRequestBootstrap(): Promise<void> {
+            if (typeof document === "undefined") {
+                return;
+            }
+
+            if (this.apiKey && this.hmacSecret) {
+                return;
+            }
+
+            if (this.token) {
+                if (this.authBootstrapToken === this.token) {
+                    return;
+                }
+            } else if (this.authBootstrapAnonymousCompleted) {
+                return;
+            }
+
+            if (this.authBootstrapPromise) {
+                return this.authBootstrapPromise;
+            }
+
+            this.authBootstrapPromise = this.checkHealth(true)
+                .then(() => {
+                    if (this.token) {
+                        this.authBootstrapToken = this.token;
+                    } else {
+                        this.authBootstrapAnonymousCompleted = true;
+                    }
+                })
+                .finally(() => {
+                    this.authBootstrapPromise = null;
+                });
+
+            return this.authBootstrapPromise;
+        }
+
+        // 인증 요청 전 자동 health 부트스트랩을 수행합니다.
+        override async prepareRequest(withAuth: boolean): Promise<void> {
+            await super.prepareRequest(withAuth);
+            if (!withAuth) {
+                return;
+            }
+
+            await this.ensureAuthenticatedRequestBootstrap();
         }
 
         /** 로그인 응답을 반환합니다. 성공 시에만 `access_token`을 내부 상태에 저장합니다. */

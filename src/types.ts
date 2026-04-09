@@ -362,3 +362,9 @@ export interface FileUploadOptions {
     /** 공개 파일 여부 (기본 서버 설정 따름) */
     isPublic?: boolean;
 }
+
+/** 스토리지 메타 정보 별칭 타입 */
+export type StorageMeta = FileMeta;
+
+/** `storageUpload()` 옵션 */
+export interface StorageUploadOptions extends FileUploadOptions {}

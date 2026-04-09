@@ -1,4 +1,9 @@
-import type { FileMeta, FileUploadOptions } from "../../types.js";
+import type {
+    FileMeta,
+    FileUploadOptions,
+    StorageMeta,
+    StorageUploadOptions,
+} from "../../types.js";
 import type { GConstructor, EntityServerClientBase } from "../../client/base.js";
 
 export function FileMixin<TBase extends GConstructor<EntityServerClientBase>>(
@@ -100,6 +105,69 @@ export function FileMixin<TBase extends GConstructor<EntityServerClientBase>>(
         /** 파일 인라인 뷰 URL을 반환합니다. (fetch 없음, URL 조합만) */
         fileUrl(uuid: string): string {
             return `${this.baseUrl}/v1/files/${uuid}`;
+        }
+
+        // ─── 스토리지 라우트 별칭 ───────────────────────────────────────────
+
+        /** ES 스토리지 업로드 라우트를 파일 API 이름 대신 호출합니다. */
+        storageUpload(
+            entity: string,
+            file: File | Blob,
+            opts: StorageUploadOptions = {},
+        ): Promise<{ ok: boolean; uuid: string; data: StorageMeta }> {
+            return this.fileUpload(entity, file, opts);
+        }
+
+        /** ES 스토리지 다운로드 라우트를 파일 API 이름 대신 호출합니다. */
+        storageDownload(entity: string, uuid: string): Promise<ArrayBuffer> {
+            return this.fileDownload(entity, uuid);
+        }
+
+        /** ES 스토리지 삭제 라우트를 파일 API 이름 대신 호출합니다. */
+        storageDelete(
+            entity: string,
+            uuid: string,
+        ): Promise<{ ok: boolean; uuid: string; deleted: boolean }> {
+            return this.fileDelete(entity, uuid);
+        }
+
+        /** ES 스토리지 목록 라우트를 파일 API 이름 대신 호출합니다. */
+        storageList(
+            entity: string,
+            opts: { refSeq?: number } = {},
+        ): Promise<{
+            ok: boolean;
+            data: { items: StorageMeta[]; total: number };
+        }> {
+            return this.fileList(entity, opts);
+        }
+
+        /** ES 스토리지 메타 라우트를 파일 API 이름 대신 호출합니다. */
+        storageMeta(
+            entity: string,
+            uuid: string,
+        ): Promise<{ ok: boolean; data: StorageMeta }> {
+            return this.fileMeta(entity, uuid);
+        }
+
+        /** ES 스토리지 임시 토큰 라우트를 파일 API 이름 대신 호출합니다. */
+        storageToken(uuid: string): Promise<{ ok: boolean; token: string }> {
+            return this.fileToken(uuid);
+        }
+
+        /** ES 스토리지 인라인 뷰/다운로드 URL을 반환합니다. */
+        storageViewUrl(uuid: string, opts: { download?: boolean } = {}): string {
+            return this.fileViewUrl(uuid, opts);
+        }
+
+        /** ES 스토리지 다운로드 URL을 반환합니다. */
+        storageDownloadUrl(uuid: string): string {
+            return this.fileViewUrl(uuid, { download: true });
+        }
+
+        /** ES 스토리지 인라인 뷰 URL을 반환합니다. */
+        storageUrl(uuid: string): string {
+            return this.fileUrl(uuid);
         }
     };
 }

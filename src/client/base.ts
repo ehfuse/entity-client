@@ -8,7 +8,11 @@ import type {
 } from "../types.js";
 import { readEnv } from "./utils.js";
 import { derivePacketKey, parseRequestBody } from "./packet.js";
-import { entityRequest, type RequestOptions } from "./request.js";
+import {
+    entityRequest,
+    type EntityRequestConfig,
+    type RequestOptions,
+} from "./request.js";
 
 const REALTIME_DEFAULT_PATH = "/v1/realtime";
 
@@ -659,6 +663,7 @@ export class EntityServerClientBase {
                 path: string,
                 withAuth = true,
                 extraHeaders?: Record<string, string>,
+                requestConfig?: EntityRequestConfig,
             ): Promise<T> {
                 return self
                     .prepareRequest(withAuth)
@@ -670,7 +675,7 @@ export class EntityServerClientBase {
                             undefined,
                             withAuth,
                             extraHeaders,
-                            true,
+                            requestConfig ?? true,
                         ),
                     );
             },
@@ -679,6 +684,7 @@ export class EntityServerClientBase {
                 body?: unknown,
                 withAuth = true,
                 extraHeaders?: Record<string, string>,
+                requestConfig?: EntityRequestConfig,
             ): Promise<T> {
                 return self
                     .prepareRequest(withAuth)
@@ -690,7 +696,7 @@ export class EntityServerClientBase {
                             body,
                             withAuth,
                             extraHeaders,
-                            true,
+                            requestConfig ?? true,
                         ),
                     );
             },
@@ -699,6 +705,7 @@ export class EntityServerClientBase {
                 body?: unknown,
                 withAuth = true,
                 extraHeaders?: Record<string, string>,
+                requestConfig?: EntityRequestConfig,
             ): Promise<T> {
                 return self
                     .prepareRequest(withAuth)
@@ -710,7 +717,7 @@ export class EntityServerClientBase {
                             body,
                             withAuth,
                             extraHeaders,
-                            true,
+                            requestConfig ?? true,
                         ),
                     );
             },
@@ -719,6 +726,7 @@ export class EntityServerClientBase {
                 body?: unknown,
                 withAuth = true,
                 extraHeaders?: Record<string, string>,
+                requestConfig?: EntityRequestConfig,
             ): Promise<T> {
                 return self
                     .prepareRequest(withAuth)
@@ -730,7 +738,7 @@ export class EntityServerClientBase {
                             body,
                             withAuth,
                             extraHeaders,
-                            true,
+                            requestConfig ?? true,
                         ),
                     );
             },
@@ -739,6 +747,7 @@ export class EntityServerClientBase {
                 body?: unknown,
                 withAuth = true,
                 extraHeaders?: Record<string, string>,
+                requestConfig?: EntityRequestConfig,
             ): Promise<T> {
                 return self
                     .prepareRequest(withAuth)
@@ -750,7 +759,7 @@ export class EntityServerClientBase {
                             body,
                             withAuth,
                             extraHeaders,
-                            true,
+                            requestConfig ?? true,
                         ),
                     );
             },
@@ -763,6 +772,7 @@ export class EntityServerClientBase {
         body?: unknown,
         withAuth = true,
         extraHeaders?: Record<string, string>,
+        requestConfig?: EntityRequestConfig,
     ): Promise<T> {
         return this.prepareRequest(withAuth).then(() =>
             entityRequest<T>(
@@ -772,7 +782,7 @@ export class EntityServerClientBase {
                 body,
                 withAuth,
                 extraHeaders,
-                true,
+                requestConfig ?? true,
             ),
         );
     }

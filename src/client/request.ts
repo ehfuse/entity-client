@@ -18,6 +18,7 @@ export interface RequestOptions {
 export interface EntityRequestConfig {
     requireOkShape?: boolean;
     allowStatuses?: number[];
+    signal?: AbortSignal;
 }
 
 function resolvePacketSource(opts: RequestOptions): string {
@@ -151,6 +152,7 @@ export async function entityRequest<T>(
         typeof config === "boolean" ? { requireOkShape: config } : config;
     const requireOkShape = requestConfig.requireOkShape ?? true;
     const allowStatuses = new Set(requestConfig.allowStatuses ?? []);
+    const signal = requestConfig.signal;
 
     const {
         baseUrl,
@@ -250,6 +252,7 @@ export async function entityRequest<T>(
                 ? { body: fetchBody as RequestInit["body"] }
                 : {}),
             credentials: "include",
+            signal,
         });
 
     let res = await executeRequest(csrfToken);

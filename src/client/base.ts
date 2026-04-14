@@ -94,7 +94,7 @@ export class EntityServerClientBase {
         ) {
             // csrfRefresher는 AuthMixin에서 설정되므로 다음 tick에 시작
             Promise.resolve().then(() =>
-                this.startHealthTick(options.healthTickInterval),
+                this.startHealthTick(options.healthTickInterval, false),
             );
         }
     }
@@ -140,7 +140,7 @@ export class EntityServerClientBase {
             options.healthTickInterval > 0
         ) {
             Promise.resolve().then(() =>
-                this.startHealthTick(options.healthTickInterval),
+                this.startHealthTick(options.healthTickInterval, false),
             );
         }
     }
@@ -396,8 +396,12 @@ export class EntityServerClientBase {
      * keepSession=true 이면 각 tick에서 세션 부트스트랩도 함께 시도합니다.
      *
      * @param intervalMs 호출 주기(ms). 기본값: 5분
+     * @param runImmediately true면 시작 직후 첫 tick을 즉시 실행합니다.
      */
-    startHealthTick(intervalMs: number = 5 * 60 * 1000): void {
+    startHealthTick(
+        intervalMs: number = 5 * 60 * 1000,
+        runImmediately = true,
+    ): void {
         this.stopHealthTick();
         const tick = (): void => {
             if (this.healthTickPromise) return;
@@ -414,7 +418,9 @@ export class EntityServerClientBase {
                     this.healthTickPromise = null;
                 });
         };
-        tick(); // 즉시 1회 실행
+        if (runImmediately) {
+            tick();
+        }
         this.healthTickTimer = setInterval(tick, intervalMs);
     }
 

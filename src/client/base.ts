@@ -157,6 +157,11 @@ export class EntityServerClientBase {
         }
     }
 
+    /** 응답 헤더로 받은 access token 갱신을 반영한다. */
+    setAccessTokenFromResponse(token: string): void {
+        this.token = token;
+    }
+
     /** 익명 패킷 암호화용 토큰을 설정합니다. */
     setAnonymousPacketToken(token: string): void {
         this.anonymousPacketToken = token;
@@ -643,7 +648,7 @@ export class EntityServerClientBase {
             csrfCookieName: this.csrfCookieName,
             refreshCsrfCookie: this.csrfEnabled ? this.csrfRefresher : null,
             onAccessToken: (token) => {
-                this.token = token;
+                this.setAccessTokenFromResponse(token);
             },
         };
     }

@@ -63,6 +63,13 @@ export function AuthMixin<TBase extends GConstructor<EntityServerClientBase>>(
         authBootstrapToken = "";
         authBootstrapAnonymousCompleted = false;
 
+        /** 응답 헤더 access token 갱신 시 bootstrap 기준 토큰도 함께 맞춘다. */
+        override setAccessTokenFromResponse(token: string): void {
+            super.setAccessTokenFromResponse(token);
+            this.authBootstrapToken = token;
+            this.authBootstrapAnonymousCompleted = false;
+        }
+
         // health tick이 켜져 있으면 keepSession 여부에 따라 세션 부트스트랩까지 함께 처리합니다.
         csrfRefresher = (): Promise<void> =>
             this.checkHealth(this.keepSession).then(() => {});

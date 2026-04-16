@@ -518,15 +518,22 @@ export class EntityServerClientBase {
     buildRealtimeUrl(): string {
         const rawBaseUrl =
             this.baseUrl || readEnv("VITE_ENTITY_SERVER_URL") || "";
-        const baseUrl =
-            rawBaseUrl ||
-            (typeof window !== "undefined" ? window.location.origin : "");
+        const origin =
+            typeof window !== "undefined" ? window.location.origin : "";
+        const baseUrl = rawBaseUrl || origin;
 
         if (!baseUrl) {
             throw new Error("Realtime connection requires baseUrl.");
         }
 
-        const url = new URL(this.realtimePath, baseUrl);
+        const url = new URL(baseUrl, origin || undefined);
+        const basePath =
+            url.pathname === "/" ? "" : url.pathname.replace(/\/+$/, "");
+        const realtimePath = `/${this.realtimePath.replace(/^\/+/, "")}`;
+
+        url.pathname = `${basePath}${realtimePath}` || realtimePath;
+        url.search = "";
+        url.hash = "";
         url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
         url.searchParams.set("access_token", this.token);
         return url.toString();

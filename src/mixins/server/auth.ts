@@ -115,14 +115,6 @@ export function AuthMixin<TBase extends GConstructor<EntityServerClientBase>>(
                     if (bootstrapAuth && accessToken !== previousToken) {
                         this.onTokenRefreshed?.(accessToken, 0);
                     }
-                    if (
-                        bootstrapAuth &&
-                        data.authenticated === true &&
-                        this.realtimeEnabled &&
-                        this.realtimeAutoConnect
-                    ) {
-                        this.connectRealtime().catch(() => {});
-                    }
                 }
 
                 // 패킷 암호화는 health 응답이 명시적으로 활성이라고 알려줄 때만 자동 활성화한다.
@@ -253,9 +245,6 @@ export function AuthMixin<TBase extends GConstructor<EntityServerClientBase>>(
                 this.applyCsrfHealth();
                 if (this.keepSession && this.healthTickTimer === null) {
                     this.startHealthTick();
-                }
-                if (this.realtimeEnabled && this.realtimeAutoConnect) {
-                    this.connectRealtime().catch(() => {});
                 }
             }
 

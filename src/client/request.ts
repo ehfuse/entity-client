@@ -13,12 +13,124 @@ export interface RequestOptions {
     csrfCookieName: string;
     refreshCsrfCookie: (() => Promise<void>) | null;
     onAccessToken?: (token: string) => void;
+    requestAbortControllers: Map<string, AbortController>;
 }
 
 export interface EntityRequestConfig {
     requireOkShape?: boolean;
     allowStatuses?: number[];
     signal?: AbortSignal;
+    autoAbortKey?: string | false;
+}
+
+// isAutoAbortableMethod는 기본 자동 취소 키를 허용하는 쓰기 메서드인지 확인합니다.
+function isAutoAbortableMethod(method: string): boolean {
+    switch (method.toUpperCase()) {
+        case "POST":
+        case "PUT":
+        case "PATCH":
+        case "DELETE":
+            return true;
+        default:
+            return false;
+    }
+}
+
+// resolveAutoAbortKey는 요청별 자동 취소 키를 계산합니다.
+function resolveAutoAbortKey(
+    method: string,
+    path: string,
+    config: EntityRequestConfig,
+): string | null {
+    if (config.autoAbortKey === false) {
+        return null;
+    }
+
+    if (typeof config.autoAbortKey === "string") {
+        const trimmed = config.autoAbortKey.trim();
+        return trimmed ? trimmed : null;
+    }
+
+    if (isAutoAbortableMethod(method)) {
+        return `${method.toUpperCase()} ${path}`;
+    }
+
+    return null;
+}
+
+// composeAbortSignal은 외부 signal과 내부 취소 signal을 하나로 합칩니다.
+function composeAbortSignal(
+    signals: Array<AbortSignal | undefined>,
+): AbortSignal | undefined {
+    const activeSignals = signals.filter(
+        (signal): signal is AbortSignal => !!signal,
+    );
+    if (activeSignals.length === 0) {
+        return undefined;
+    }
+    if (activeSignals.length === 1) {
+        return activeSignals[0];
+    }
+    if (typeof AbortSignal.any === "function") {
+        return AbortSignal.any(activeSignals);
+    }
+
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    for (const signal of activeSignals) {
+        if (signal.aborted) {
+            controller.abort();
+            break;
+        }
+        signal.addEventListener("abort", abort, { once: true });
+    }
+    return controller.signal;
+}
+
+// createManagedAbortSignal은 같은 키의 이전 요청을 취소하고 현재 요청 signal을 반환합니다.
+function createManagedAbortSignal(
+    opts: RequestOptions,
+    method: string,
+    path: string,
+    requestConfig: EntityRequestConfig,
+): {
+    signal?: AbortSignal;
+    abortKey: string | null;
+    controller: AbortController | null;
+} {
+    const abortKey = resolveAutoAbortKey(method, path, requestConfig);
+    if (!abortKey) {
+        return {
+            signal: requestConfig.signal,
+            abortKey: null,
+            controller: null,
+        };
+    }
+
+    opts.requestAbortControllers.get(abortKey)?.abort();
+
+    const controller = new AbortController();
+    opts.requestAbortControllers.set(abortKey, controller);
+
+    return {
+        signal: composeAbortSignal([requestConfig.signal, controller.signal]),
+        abortKey,
+        controller,
+    };
+}
+
+// clearManagedAbortSignal은 현재 요청이 등록한 취소 키만 안전하게 정리합니다.
+function clearManagedAbortSignal(
+    opts: RequestOptions,
+    abortKey: string | null,
+    controller: AbortController | null,
+): void {
+    if (!abortKey || !controller) {
+        return;
+    }
+    if (opts.requestAbortControllers.get(abortKey) === controller) {
+        opts.requestAbortControllers.delete(abortKey);
+    }
 }
 
 function resolvePacketSource(opts: RequestOptions): string {
@@ -152,7 +264,13 @@ export async function entityRequest<T>(
         typeof config === "boolean" ? { requireOkShape: config } : config;
     const requireOkShape = requestConfig.requireOkShape ?? true;
     const allowStatuses = new Set(requestConfig.allowStatuses ?? []);
-    const signal = requestConfig.signal;
+    const managedAbort = createManagedAbortSignal(
+        opts,
+        method,
+        path,
+        requestConfig,
+    );
+    const signal = managedAbort.signal;
 
     const {
         baseUrl,
@@ -255,81 +373,90 @@ export async function entityRequest<T>(
             signal,
         });
 
-    let res = await executeRequest(csrfToken);
+    try {
+        let res = await executeRequest(csrfToken);
 
-    if (!res.ok) {
-        const message = await readErrorMessage(res.clone());
-        if (
-            shouldUseCsrf &&
-            refreshCsrfCookie &&
-            isCsrfError(res.status, message)
-        ) {
-            await refreshCsrfCookie();
-            csrfToken = readCsrfCookie(csrfCookieName);
-            res = await executeRequest(csrfToken);
-        } else if (!allowStatuses.has(res.status)) {
-            const err = new Error(message);
+        if (!res.ok) {
+            const message = await readErrorMessage(res.clone());
+            if (
+                shouldUseCsrf &&
+                refreshCsrfCookie &&
+                isCsrfError(res.status, message)
+            ) {
+                await refreshCsrfCookie();
+                csrfToken = readCsrfCookie(csrfCookieName);
+                res = await executeRequest(csrfToken);
+            } else if (!allowStatuses.has(res.status)) {
+                const err = new Error(message);
+                (err as { status?: number }).status = res.status;
+                throw err;
+            } else {
+                // 허용된 비정상 상태는 본문을 그대로 파싱해 호출자에게 넘깁니다.
+            }
+        }
+
+        if (!res.ok && !allowStatuses.has(res.status)) {
+            const err = new Error(await readErrorMessage(res));
             (err as { status?: number }).status = res.status;
             throw err;
-        } else {
-            // 허용된 비정상 상태는 본문을 그대로 파싱해 호출자에게 넘깁니다.
         }
-    }
 
-    if (!res.ok && !allowStatuses.has(res.status)) {
-        const err = new Error(await readErrorMessage(res));
-        (err as { status?: number }).status = res.status;
-        throw err;
-    }
+        const accessTokenHeader =
+            res.headers.get("X-Access-Token")?.trim() ?? "";
 
-    const accessTokenHeader = res.headers.get("X-Access-Token")?.trim() ?? "";
+        const contentType = res.headers.get("Content-Type") ?? "";
+        if (contentType.includes("application/octet-stream")) {
+            const key = derivePacketKey(hmacSecret, responsePacketSource);
+            const encryptedBody = await res.arrayBuffer();
+            let decrypted: T;
 
-    const contentType = res.headers.get("Content-Type") ?? "";
-    if (contentType.includes("application/octet-stream")) {
-        const key = derivePacketKey(hmacSecret, responsePacketSource);
-        const encryptedBody = await res.arrayBuffer();
-        let decrypted: T;
+            try {
+                decrypted = decryptPacket<T>(encryptedBody, key);
+            } catch (error) {
+                logPacketDecryptError({
+                    method,
+                    path,
+                    withAuth,
+                    status: res.status,
+                    contentType,
+                    responsePacketSource,
+                    tokenPresent: !!token,
+                    anonymousPacketTokenPresent: !!anonymousPacketToken,
+                    hmacEnabled: !!hmacSecret,
+                    error,
+                });
+                throw error;
+            }
 
-        try {
-            decrypted = decryptPacket<T>(encryptedBody, key);
-        } catch (error) {
-            logPacketDecryptError({
-                method,
-                path,
-                withAuth,
-                status: res.status,
-                contentType,
-                responsePacketSource,
-                tokenPresent: !!token,
-                anonymousPacketTokenPresent: !!anonymousPacketToken,
-                hmacEnabled: !!hmacSecret,
-                error,
-            });
-            throw error;
+            if (accessTokenHeader) {
+                onAccessToken?.(accessTokenHeader);
+            }
+            return decrypted;
         }
 
         if (accessTokenHeader) {
             onAccessToken?.(accessTokenHeader);
         }
-        return decrypted;
-    }
 
-    if (accessTokenHeader) {
-        onAccessToken?.(accessTokenHeader);
-    }
+        if (!contentType.includes("application/json")) {
+            return (await res.text()) as T;
+        }
 
-    if (!contentType.includes("application/json")) {
-        return (await res.text()) as T;
-    }
-
-    const data = (await res.json()) as { ok?: boolean; message?: string };
-    if (requireOkShape && !data.ok && !allowStatuses.has(res.status)) {
-        const err = new Error(
-            data.message ?? `EntityServer error (HTTP ${res.status})`,
+        const data = (await res.json()) as { ok?: boolean; message?: string };
+        if (requireOkShape && !data.ok && !allowStatuses.has(res.status)) {
+            const err = new Error(
+                data.message ?? `EntityServer error (HTTP ${res.status})`,
+            );
+            (err as { status?: number }).status = res.status;
+            throw err;
+        } else {
+            return data as T;
+        }
+    } finally {
+        clearManagedAbortSignal(
+            opts,
+            managedAbort.abortKey,
+            managedAbort.controller,
         );
-        (err as { status?: number }).status = res.status;
-        throw err;
     }
-
-    return data as T;
 }

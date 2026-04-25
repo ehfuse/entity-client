@@ -172,7 +172,6 @@ export interface RealtimeStatusChange {
 export interface RealtimeClientOptions {
     enabled?: boolean;
     path?: string;
-    autoConnect?: boolean;
     autoReconnect?: boolean;
     reconnectDelayMs?: number;
 }

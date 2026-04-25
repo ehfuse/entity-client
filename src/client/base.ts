@@ -31,6 +31,7 @@ export class EntityServerClientBase {
     csrfCookieName: string;
     /** @internal health 재호출로 CSRF 쿠키 갱신 (AuthMixin에서 설정) */
     csrfRefresher: (() => Promise<void>) | null = null;
+    requestAbortControllers = new Map<string, AbortController>();
     activeTxId: string | null = null;
 
     // 세션 유지 관련
@@ -45,7 +46,6 @@ export class EntityServerClientBase {
     healthTickPromise: Promise<unknown> | null = null;
     realtimeEnabled: boolean;
     realtimePath: string;
-    realtimeAutoConnect: boolean;
     realtimeAutoReconnect: boolean;
     realtimeReconnectDelayMs: number;
     realtimeStatus: RealtimeConnectionStatus;
@@ -83,7 +83,6 @@ export class EntityServerClientBase {
         this.onHealthChange = options.onHealthChange;
         this.realtimeEnabled = false;
         this.realtimePath = REALTIME_DEFAULT_PATH;
-        this.realtimeAutoConnect = true;
         this.realtimeAutoReconnect = true;
         this.realtimeReconnectDelayMs = 3000;
         this.realtimeStatus = "idle";
@@ -150,16 +149,15 @@ export class EntityServerClientBase {
         this.token = token;
         if (!token) {
             this.disconnectRealtime("token_cleared");
-            return;
-        }
-        if (this.realtimeEnabled && this.realtimeAutoConnect) {
-            void this.connectRealtime().catch(() => {});
         }
     }
 
     /** 응답 헤더로 받은 access token 갱신을 반영한다. */
     setAccessTokenFromResponse(token: string): void {
         this.token = token;
+        if (!token) {
+            this.disconnectRealtime("token_cleared");
+        }
     }
 
     /** 익명 패킷 암호화용 토큰을 설정합니다. */
@@ -497,7 +495,6 @@ export class EntityServerClientBase {
         this.realtimePath =
             String(normalized.path ?? REALTIME_DEFAULT_PATH).trim() ||
             REALTIME_DEFAULT_PATH;
-        this.realtimeAutoConnect = normalized.autoConnect ?? true;
         this.realtimeAutoReconnect = normalized.autoReconnect ?? true;
         this.realtimeReconnectDelayMs = Math.max(
             250,
@@ -510,9 +507,6 @@ export class EntityServerClientBase {
         }
 
         this.setRealtimeStatus("idle", "realtime_enabled");
-        if (this.token && this.realtimeAutoConnect) {
-            void this.connectRealtime().catch(() => {});
-        }
     }
 
     buildRealtimeUrl(): string {
@@ -654,6 +648,7 @@ export class EntityServerClientBase {
             csrfHeaderName: this.csrfHeaderName,
             csrfCookieName: this.csrfCookieName,
             refreshCsrfCookie: this.csrfEnabled ? this.csrfRefresher : null,
+            requestAbortControllers: this.requestAbortControllers,
             onAccessToken: (token) => {
                 this.setAccessTokenFromResponse(token);
             },

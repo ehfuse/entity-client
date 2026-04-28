@@ -147,17 +147,27 @@ export class EntityServerClientBase {
     /** 인증 요청에 사용할 JWT Access Token을 설정합니다. */
     setToken(token: string): void {
         this.token = token;
-        if (!token) {
-            this.disconnectRealtime("token_cleared");
-        }
+        this.syncRealtimeWithToken();
     }
 
     /** 응답 헤더로 받은 access token 갱신을 반영한다. */
     setAccessTokenFromResponse(token: string): void {
         this.token = token;
-        if (!token) {
+        this.syncRealtimeWithToken();
+    }
+
+    /** 토큰 변경 후 realtime 연결 상태를 동기화한다. */
+    syncRealtimeWithToken(): void {
+        if (!this.token) {
             this.disconnectRealtime("token_cleared");
+            return;
         }
+
+        if (!this.realtimeEnabled || typeof WebSocket === "undefined") {
+            return;
+        }
+
+        void this.connectRealtime().catch(() => {});
     }
 
     /** 익명 패킷 암호화용 토큰을 설정합니다. */

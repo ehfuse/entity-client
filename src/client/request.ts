@@ -23,6 +23,25 @@ export interface EntityRequestConfig {
     autoAbortKey?: string | false;
 }
 
+export interface EntityRequestError extends Error {
+    status?: number;
+    code?: string;
+    details?: unknown;
+}
+
+interface EntityErrorBody {
+    error?: string;
+    message?: string;
+    code?: string;
+    [key: string]: unknown;
+}
+
+interface EntityErrorDetails {
+    message: string;
+    code?: string;
+    body?: EntityErrorBody;
+}
+
 // isAutoAbortableMethod는 기본 자동 취소 키를 허용하는 쓰기 메서드인지 확인합니다.
 function isAutoAbortableMethod(method: string): boolean {
     switch (method.toUpperCase()) {
@@ -229,19 +248,37 @@ function isCsrfError(status: number, message: string): boolean {
     );
 }
 
-async function readErrorMessage(res: Response): Promise<string> {
+// readErrorDetails는 에러 응답 본문에서 메시지와 코드를 추출합니다.
+async function readErrorDetails(res: Response): Promise<EntityErrorDetails> {
     const contentType = res.headers.get("Content-Type") ?? "";
     if (contentType.includes("application/json")) {
-        const data = (await res.json().catch(() => null)) as {
-            error?: string;
-            message?: string;
-        } | null;
-        if (data?.error) return data.error;
-        if (data?.message) return data.message;
+        const data = (await res
+            .json()
+            .catch(() => null)) as EntityErrorBody | null;
+        if (data?.error)
+            return { message: data.error, code: data.code, body: data };
+        if (data?.message)
+            return { message: data.message, code: data.code, body: data };
     }
 
     const text = await res.text().catch(() => "");
-    return text || `HTTP ${res.status}`;
+    return { message: text || `HTTP ${res.status}` };
+}
+
+// createEntityRequestError는 HTTP 에러 정보를 Error 객체에 보존합니다.
+function createEntityRequestError(
+    status: number,
+    details: EntityErrorDetails,
+): EntityRequestError {
+    const err = new Error(details.message) as EntityRequestError;
+    err.status = status;
+    if (details.code) {
+        err.code = details.code;
+    }
+    if (details.body) {
+        err.details = details.body;
+    }
+    return err;
 }
 
 /**
@@ -377,28 +414,27 @@ export async function entityRequest<T>(
         let res = await executeRequest(csrfToken);
 
         if (!res.ok) {
-            const message = await readErrorMessage(res.clone());
+            const details = await readErrorDetails(res.clone());
             if (
                 shouldUseCsrf &&
                 refreshCsrfCookie &&
-                isCsrfError(res.status, message)
+                isCsrfError(res.status, details.message)
             ) {
                 await refreshCsrfCookie();
                 csrfToken = readCsrfCookie(csrfCookieName);
                 res = await executeRequest(csrfToken);
             } else if (!allowStatuses.has(res.status)) {
-                const err = new Error(message);
-                (err as { status?: number }).status = res.status;
-                throw err;
+                throw createEntityRequestError(res.status, details);
             } else {
                 // 허용된 비정상 상태는 본문을 그대로 파싱해 호출자에게 넘깁니다.
             }
         }
 
         if (!res.ok && !allowStatuses.has(res.status)) {
-            const err = new Error(await readErrorMessage(res));
-            (err as { status?: number }).status = res.status;
-            throw err;
+            throw createEntityRequestError(
+                res.status,
+                await readErrorDetails(res),
+            );
         }
 
         const accessTokenHeader =
@@ -442,13 +478,18 @@ export async function entityRequest<T>(
             return (await res.text()) as T;
         }
 
-        const data = (await res.json()) as { ok?: boolean; message?: string };
+        const data = (await res.json()) as {
+            ok?: boolean;
+            message?: string;
+            code?: string;
+        };
         if (requireOkShape && !data.ok && !allowStatuses.has(res.status)) {
-            const err = new Error(
-                data.message ?? `EntityServer error (HTTP ${res.status})`,
-            );
-            (err as { status?: number }).status = res.status;
-            throw err;
+            throw createEntityRequestError(res.status, {
+                message:
+                    data.message ?? `EntityServer error (HTTP ${res.status})`,
+                code: data.code,
+                body: data,
+            });
         } else {
             return data as T;
         }

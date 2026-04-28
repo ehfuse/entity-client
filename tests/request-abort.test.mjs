@@ -232,3 +232,29 @@ test("auto abort can be explicitly disabled per request", async () => {
         globalThis.fetch = originalFetch;
     }
 });
+
+test("setToken reconnects realtime when enabled", async () => {
+    const originalWebSocket = globalThis.WebSocket;
+
+    globalThis.WebSocket = class WebSocketStub {};
+
+    try {
+        const client = new EntityAppServerApi({
+            baseUrl: "https://example.com",
+        });
+
+        let connectCallCount = 0;
+        client.realtimeEnabled = true;
+        client.connectRealtime = () => {
+            connectCallCount += 1;
+            return Promise.resolve();
+        };
+
+        client.setToken("restored-token");
+        await Promise.resolve();
+
+        assert.equal(connectCallCount, 1);
+    } finally {
+        globalThis.WebSocket = originalWebSocket;
+    }
+});

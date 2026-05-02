@@ -19,10 +19,7 @@ export function BoardMixin<TBase extends GConstructor<EntityServerClientBase>>(
         }
 
         getBoardCategory<T = unknown>(seq: number): Promise<T> {
-            return this.http.get(
-                `/v1/board/categories/${seq}`,
-                false,
-            );
+            return this.http.get(`/v1/board/categories/${seq}`, false);
         }
 
         createBoardCategory<T = unknown>(
@@ -47,7 +44,9 @@ export function BoardMixin<TBase extends GConstructor<EntityServerClientBase>>(
             query: Record<string, unknown> = {},
         ): Promise<T> {
             const qs = buildQuery(query);
-            return this.http.get(`/v1/board/${category}/list${qs ? `?${qs}` : ""}`);
+            return this.http.get(
+                `/v1/board/${category}/list${qs ? `?${qs}` : ""}`,
+            );
         }
 
         getBoardPost<T = unknown>(seq: number): Promise<T> {
@@ -58,17 +57,14 @@ export function BoardMixin<TBase extends GConstructor<EntityServerClientBase>>(
             category: string,
             body: Record<string, unknown>,
         ): Promise<T> {
-            return this.http.post(
-                `/v1/board/${category}/submit`,
-                body,
-            );
+            return this.http.post(`/v1/board/${category}/submit`, body);
         }
 
         updateBoardPost<T = unknown>(
             seq: number,
             body: Record<string, unknown>,
         ): Promise<T> {
-            return this.http.put(`/v1/board/posts/${seq}`, body);
+            return this.http.patch(`/v1/board/posts/${seq}`, body);
         }
 
         deleteBoardPost<T = unknown>(seq: number): Promise<T> {
@@ -108,10 +104,7 @@ export function BoardMixin<TBase extends GConstructor<EntityServerClientBase>>(
         }
 
         listBoardFiles<T = unknown>(postSeq: number): Promise<T> {
-            return this.http.get(
-                `/v1/board/posts/${postSeq}/files`,
-                false,
-            );
+            return this.http.get(`/v1/board/posts/${postSeq}/files`, false);
         }
 
         async uploadBoardFile<T = unknown>(
@@ -166,40 +159,28 @@ export function BoardMixin<TBase extends GConstructor<EntityServerClientBase>>(
         }
 
         acceptBoardPost<T = unknown>(seq: number): Promise<T> {
-            return this.http.post(
-                `/v1/board/posts/${seq}/accept`,
-                {},
-            );
+            return this.http.post(`/v1/board/posts/${seq}/accept`, {});
         }
 
         rateBoardPost<T = unknown>(
             seq: number,
             body: Record<string, unknown>,
         ): Promise<T> {
-            return this.http.post(
-                `/v1/board/posts/${seq}/rating`,
-                body,
-            );
+            return this.http.post(`/v1/board/posts/${seq}/rating`, body);
         }
 
         rateBoardComment<T = unknown>(
             seq: number,
             body: Record<string, unknown>,
         ): Promise<T> {
-            return this.http.post(
-                `/v1/board/comments/${seq}/rating`,
-                body,
-            );
+            return this.http.post(`/v1/board/comments/${seq}/rating`, body);
         }
 
         listBoardTags<T = unknown>(
             query: Record<string, unknown> = {},
         ): Promise<T> {
             const qs = buildQuery(query);
-            return this.http.get(
-                `/v1/board/tags${qs ? `?${qs}` : ""}`,
-                false,
-            );
+            return this.http.get(`/v1/board/tags${qs ? `?${qs}` : ""}`, false);
         }
 
         setBoardPostTags<T = unknown>(
@@ -213,20 +194,14 @@ export function BoardMixin<TBase extends GConstructor<EntityServerClientBase>>(
             seq: number,
             body: Record<string, unknown>,
         ): Promise<T> {
-            return this.http.post(
-                `/v1/board/posts/${seq}/report`,
-                body,
-            );
+            return this.http.post(`/v1/board/posts/${seq}/report`, body);
         }
 
         reportBoardComment<T = unknown>(
             seq: number,
             body: Record<string, unknown>,
         ): Promise<T> {
-            return this.http.post(
-                `/v1/board/comments/${seq}/report`,
-                body,
-            );
+            return this.http.post(`/v1/board/comments/${seq}/report`, body);
         }
 
         listBoardReports<T = unknown>(
@@ -242,10 +217,7 @@ export function BoardMixin<TBase extends GConstructor<EntityServerClientBase>>(
             seq: number,
             body: Record<string, unknown>,
         ): Promise<T> {
-            return this.http.patch(
-                `/v1/board/admin/reports/${seq}`,
-                body,
-            );
+            return this.http.patch(`/v1/board/admin/reports/${seq}`, body);
         }
 
         markBoardPostRead<T = unknown>(seq: number): Promise<T> {
@@ -256,16 +228,11 @@ export function BoardMixin<TBase extends GConstructor<EntityServerClientBase>>(
             query: Record<string, unknown> = {},
         ): Promise<T> {
             const qs = buildQuery(query);
-            return this.http.get(
-                `/v1/board/mentions${qs ? `?${qs}` : ""}`,
-            );
+            return this.http.get(`/v1/board/mentions${qs ? `?${qs}` : ""}`);
         }
 
         markBoardMentionRead<T = unknown>(seq: number): Promise<T> {
-            return this.http.patch(
-                `/v1/board/mentions/${seq}/read`,
-                {},
-            );
+            return this.http.patch(`/v1/board/mentions/${seq}/read`, {});
         }
     };
 }

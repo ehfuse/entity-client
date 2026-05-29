@@ -67,6 +67,10 @@ export function BoardMixin<TBase extends GConstructor<EntityServerClientBase>>(
             return this.http.patch(`/v1/board/posts/${seq}`, body);
         }
 
+        expireBoardPost<T = unknown>(seq: number): Promise<T> {
+            return this.http.post(`/v1/board/posts/${seq}/expire`, {});
+        }
+
         deleteBoardPost<T = unknown>(seq: number): Promise<T> {
             return this.http.delete(`/v1/board/posts/${seq}`);
         }

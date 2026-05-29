@@ -248,6 +248,11 @@ function isCsrfError(status: number, message: string): boolean {
     );
 }
 
+// HMAC nonce 재사용 응답인지 확인합니다.
+function isHmacNonceReuseError(status: number, message: string): boolean {
+    return status === 401 && /nonce already used/i.test(message);
+}
+
 // readErrorDetails는 에러 응답 본문에서 메시지와 코드를 추출합니다.
 async function readErrorDetails(res: Response): Promise<EntityErrorDetails> {
     const contentType = res.headers.get("Content-Type") ?? "";
@@ -416,6 +421,11 @@ export async function entityRequest<T>(
         if (!res.ok) {
             const details = await readErrorDetails(res.clone());
             if (
+                isHmacMode &&
+                isHmacNonceReuseError(res.status, details.message)
+            ) {
+                res = await executeRequest(csrfToken);
+            } else if (
                 shouldUseCsrf &&
                 refreshCsrfCookie &&
                 isCsrfError(res.status, details.message)

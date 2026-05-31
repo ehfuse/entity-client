@@ -33,6 +33,8 @@ export class EntityServerClientBase {
     csrfRefresher: (() => Promise<void>) | null = null;
     requestAbortControllers = new Map<string, AbortController>();
     activeTxId: string | null = null;
+    /** @internal 브라우저에서 첫 구성 시 health 1회 자동 호출했는지 여부 */
+    initialHealthFired = false;
 
     // 세션 유지 관련
     keepSession: boolean;
@@ -96,6 +98,9 @@ export class EntityServerClientBase {
                 this.startHealthTick(options.healthTickInterval, false),
             );
         }
+
+        // baseUrl 이 생성 시점에 정해진 경우(env 등) 첫 health 를 보장한다.
+        this.fireInitialHealth();
     }
 
     /** baseUrl, token, encryptRequests 값을 런타임에 갱신합니다. */
@@ -142,6 +147,29 @@ export class EntityServerClientBase {
                 this.startHealthTick(options.healthTickInterval, false),
             );
         }
+
+        // 브라우저에서 baseUrl 이 정해지면 첫 마운트 시 health 를 1회 자동 호출한다.
+        this.fireInitialHealth();
+    }
+
+    /**
+     * 브라우저에서 클라이언트가 처음 구성될 때 `/v1/health` 를 1회 자동 호출한다.
+     *
+     * CSRF·anon 쿠키 발급과 패킷 암호화 협상(`X-Packet-Encryption`)을 앱 진입 즉시 선반영해,
+     * 프런트 라우트(`/login` 등)와 무관하게 항상 health 가 최소 1회 돌도록 보장한다.
+     *
+     * @internal
+     */
+    fireInitialHealth(): void {
+        if (this.initialHealthFired) return;
+        if (typeof document === "undefined") return;
+        if (!this.baseUrl) return;
+        this.initialHealthFired = true;
+        const self = this as unknown as {
+            checkHealth?: (bootstrapAuth?: boolean) => Promise<unknown>;
+        };
+        if (typeof self.checkHealth !== "function") return;
+        Promise.resolve().then(() => self.checkHealth!(false).catch(() => {}));
     }
 
     /** 인증 요청에 사용할 JWT Access Token을 설정합니다. */

@@ -117,9 +117,13 @@ export function AuthMixin<TBase extends GConstructor<EntityServerClientBase>>(
                     }
                 }
 
-                // 패킷 암호화는 health 응답이 명시적으로 활성이라고 알려줄 때만 자동 활성화한다.
+                // 패킷 암호화는 health 가 명시적으로 활성이라고 알려줄 때만 자동 활성화한다.
+                // AS 는 `X-Packet-Encryption: 1` 헤더로, ES 직결은 본문 `packet_encryption`으로 알린다.
+                const packetEncryptionEnabled =
+                    res.headers.get("X-Packet-Encryption") === "1" ||
+                    data.packet_encryption === true;
                 const anonToken = this.readCookie("anon_token");
-                if (data.packet_encryption === true && anonToken) {
+                if (packetEncryptionEnabled && anonToken) {
                     this.anonymousPacketToken = anonToken;
                     this.encryptRequests = true;
                 }

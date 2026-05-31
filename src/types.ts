@@ -211,6 +211,18 @@ export interface EntityServerClientOptions {
      */
     encryptRequests?: boolean;
     /**
+     * dev 디버그 평문 시크릿입니다.
+     *
+     * 설정하면 모든 요청을 **암호화하지 않고 평문으로** 보내며 `X-Debug-Plain: <시크릿>` 헤더를
+     * 함께 전송합니다. 서버(AS)의 `DEBUG_PLAIN_SECRET` 환경변수와 값이 일치하면 서버도 해당
+     * 요청/응답을 평문으로 처리해(패킷 암호화 우회) 운영 환경에서도 통신 내용을 그대로 디버깅할 수 있습니다.
+     *
+     * 보통 `npm run dev`(개발 모드)에서만 주입합니다. 시크릿을 모르면 켤 수 없으므로 운영에서도 안전합니다.
+     *
+     * 기본값: `""`(미설정 → 비활성)
+     */
+    debugPlainSecret?: string;
+    /**
      * `true`이면 health tick 시 `X-Session-Bootstrap: 1`로 세션 연장을 함께 시도합니다.
      * 브라우저 직접 통신에서는 refresh API를 따로 스케줄링하는 대신 이 방식을 권장합니다.
      *

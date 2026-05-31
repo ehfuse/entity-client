@@ -26,6 +26,8 @@ export class EntityServerClientBase {
     apiKey: string;
     hmacSecret: string;
     encryptRequests: boolean;
+    /** dev 디버그 평문 시크릿. 설정 시 요청을 평문 전송하고 `X-Debug-Plain` 헤더를 보낸다. */
+    debugPlainSecret: string;
     csrfEnabled: boolean;
     csrfHeaderName: string;
     csrfCookieName: string;
@@ -75,6 +77,7 @@ export class EntityServerClientBase {
         this.apiKey = options.apiKey ?? "";
         this.hmacSecret = options.hmacSecret ?? "";
         this.encryptRequests = options.encryptRequests ?? false;
+        this.debugPlainSecret = options.debugPlainSecret ?? "";
         this.csrfEnabled = options.csrfEnabled ?? false;
         this.csrfHeaderName = options.csrfHeaderName ?? "x-csrf-token";
         this.csrfCookieName = options.csrfCookieName ?? "_csrf";
@@ -114,6 +117,8 @@ export class EntityServerClientBase {
         }
         if (typeof options.encryptRequests === "boolean")
             this.encryptRequests = options.encryptRequests;
+        if (typeof options.debugPlainSecret === "string")
+            this.debugPlainSecret = options.debugPlainSecret;
         if (typeof options.csrfEnabled === "boolean") {
             this.csrfEnabled = options.csrfEnabled;
         }
@@ -687,6 +692,7 @@ export class EntityServerClientBase {
             csrfCookieName: this.csrfCookieName,
             refreshCsrfCookie: this.csrfEnabled ? this.csrfRefresher : null,
             requestAbortControllers: this.requestAbortControllers,
+            debugPlainSecret: this.debugPlainSecret,
             onAccessToken: (token) => {
                 this.setAccessTokenFromResponse(token);
             },

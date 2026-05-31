@@ -14,6 +14,12 @@ export interface RequestOptions {
     refreshCsrfCookie: (() => Promise<void>) | null;
     onAccessToken?: (token: string) => void;
     requestAbortControllers: Map<string, AbortController>;
+    /**
+     * dev 디버그 평문 시크릿. 설정되면 요청을 암호화하지 않고(평문),
+     * `X-Debug-Plain` 헤더로 전송한다. 서버의 `DEBUG_PLAIN_SECRET` 과 일치하면
+     * 서버도 해당 요청/응답을 평문으로 처리한다(패킷 암호화 우회).
+     */
+    debugPlainSecret?: string;
 }
 
 export interface EntityRequestConfig {
@@ -325,6 +331,7 @@ export async function entityRequest<T>(
         csrfCookieName,
         refreshCsrfCookie,
         onAccessToken,
+        debugPlainSecret,
     } = opts;
     // checkHealth()가 완료되기 전 race condition을 막기 위해 anon_token 쿠키를 직접 fallback으로 읽음
     const anonymousPacketToken =
@@ -344,6 +351,7 @@ export async function entityRequest<T>(
     let fetchBody: string | Uint8Array | null = null;
     if (body != null) {
         const shouldEncrypt =
+            !debugPlainSecret &&
             encryptRequests &&
             !!packetSource &&
             withAuth &&
@@ -380,6 +388,10 @@ export async function entityRequest<T>(
         }
         if (includeAnonymousPacketHeader) {
             headers["X-Packet-Token"] = anonymousPacketToken;
+        }
+        // dev 디버그 바이패스: 서버가 평문 처리하도록 시크릿 헤더를 보낸다.
+        if (debugPlainSecret) {
+            headers["X-Debug-Plain"] = debugPlainSecret;
         }
         if (shouldUseCsrf && resolvedCsrfToken) {
             headers[csrfHeaderName] = resolvedCsrfToken;

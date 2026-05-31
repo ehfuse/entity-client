@@ -76,6 +76,15 @@ function resolveAutoAbortKey(
         return trimmed ? trimmed : null;
     }
 
+    // 자동 취소(같은 경로 중복 요청 취소)는 브라우저 UX 최적화다. 서버(Node)에서는
+    // 동시 요청이 정상 동작이므로 기본 자동 취소를 적용하지 않는다 — 같은 경로 동시 호출이
+    // 서로를 AbortError 로 취소하는 문제(예: 한 핸들러에서 같은 엔티티 list 2개를 Promise.all 로
+    // 동시 호출, 또는 폴링으로 동시 요청이 겹치는 경우)를 막는다.
+    // 명시적 autoAbortKey(문자열/false)는 서버에서도 위에서 그대로 존중한다.
+    if (typeof window === "undefined") {
+        return null;
+    }
+
     if (isAutoAbortableMethod(method)) {
         return `${method.toUpperCase()} ${path}`;
     }

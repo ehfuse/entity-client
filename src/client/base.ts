@@ -10,6 +10,7 @@ import { readEnv } from "./utils.js";
 import { derivePacketKey, parseRequestBody } from "./packet.js";
 import {
     entityRequest,
+    requestFormData,
     type EntityRequestConfig,
     type RequestOptions,
 } from "./request.js";
@@ -884,27 +885,10 @@ export class EntityServerClientBase {
         form: FormData,
         withAuth = true,
     ): Promise<T> {
-        const headers: Record<string, string> = {};
-        if (withAuth && this.token)
-            headers["Authorization"] = `Bearer ${this.token}`;
-        if (this.apiKey) headers["X-API-Key"] = this.apiKey;
-
-        const res = await fetch(this.baseUrl + path, {
-            method,
-            headers,
-            body: form,
-            credentials: "include",
-        });
-
-        const data = (await res.json()) as { ok?: boolean; message?: string };
-        if (!data.ok) {
-            const err = new Error(
-                data.message ?? `EntityServer error (HTTP ${res.status})`,
-            );
-            (err as { status?: number }).status = res.status;
-            throw err;
-        }
-        return data as T;
+        // 패킷 암호화가 켜진 서버는 응답을 octet-stream 으로 암호화해 내려줄 수 있으므로,
+        // 일반 요청과 동일한 헤더(X-Debug-Plain/X-Packet-Token/HMAC)와 응답 복호화 처리를 공유한다.
+        await this.prepareRequest(withAuth);
+        return requestFormData<T>(this.reqOpts, method, path, form, withAuth);
     }
 
     /** multipart/form-data 요청을 보내고 바이너리(ArrayBuffer)를 반환합니다. */

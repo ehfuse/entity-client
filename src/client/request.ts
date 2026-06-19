@@ -532,3 +532,143 @@ export async function entityRequest<T>(
         );
     }
 }
+
+/**
+ * multipart/form-data(파일 업로드) 요청을 패킷 암호화와 무관하게 보낸다.
+ *
+ * 파일 업로드는 요청 본문(FormData)을 암호화하지 않는다. 서버가 multipart 를 그대로 파싱하기 때문이다.
+ * 다만 패킷 암호화가 켜진 서버는 **응답**을 `application/octet-stream` 으로 암호화해 내려줄 수 있으므로,
+ * 일반 `entityRequest` 와 동일하게 `X-Debug-Plain`/`X-Packet-Token`/HMAC 헤더를 실어 보내고
+ * 응답 Content-Type 에 따라 (octet-stream 이면 복호화, 아니면 JSON) 자동 처리한다.
+ *
+ * 기존 raw `fetch + res.json()` 방식은 암호화 응답을 복호화하지 못해
+ * `Unexpected token '...' is not valid JSON` 으로 깨졌다. (HTTP 200 이어도)
+ */
+export async function requestFormData<T>(
+    opts: RequestOptions,
+    method: string,
+    path: string,
+    form: FormData,
+    withAuth = true,
+): Promise<T> {
+    const {
+        baseUrl,
+        token,
+        apiKey,
+        hmacSecret,
+        csrfEnabled,
+        csrfHeaderName,
+        csrfCookieName,
+        refreshCsrfCookie,
+        onAccessToken,
+        debugPlainSecret,
+    } = opts;
+
+    const anonymousPacketToken =
+        opts.anonymousPacketToken || readCsrfCookie("anon_token");
+    const isHmacMode = withAuth && !!(apiKey && hmacSecret);
+    const responsePacketSource = resolveResponsePacketSource(
+        opts,
+        withAuth,
+        anonymousPacketToken,
+    );
+    const shouldUseCsrf = csrfEnabled && requiresCsrf(method) && !isHmacMode;
+    const includeAnonymousPacketHeader = !isHmacMode && !!anonymousPacketToken;
+    let csrfToken = shouldUseCsrf ? readCsrfCookie(csrfCookieName) : "";
+
+    if (shouldUseCsrf && !csrfToken && refreshCsrfCookie) {
+        await refreshCsrfCookie();
+        csrfToken = readCsrfCookie(csrfCookieName);
+    }
+
+    // multipart 는 Content-Type(boundary)을 fetch 가 자동 설정하도록 두고, 우리는 인증/패킷 헤더만 더한다.
+    // HMAC 모드는 본문 바이트 서명이 필요하므로 multipart 업로드(브라우저 스트림 바디)에는 적용하지 않는다.
+    const buildHeaders = (resolvedCsrfToken: string): Record<string, string> => {
+        const headers: Record<string, string> = {};
+        if (!isHmacMode && withAuth && token) {
+            headers.Authorization = `Bearer ${token}`;
+        }
+        if (isHmacMode && apiKey) {
+            headers["X-API-Key"] = apiKey;
+        }
+        if (includeAnonymousPacketHeader) {
+            headers["X-Packet-Token"] = anonymousPacketToken;
+        }
+        if (debugPlainSecret) {
+            headers["X-Debug-Plain"] = debugPlainSecret;
+        }
+        if (shouldUseCsrf && resolvedCsrfToken) {
+            headers[csrfHeaderName] = resolvedCsrfToken;
+        }
+        return headers;
+    };
+
+    const executeRequest = (resolvedCsrfToken: string): Promise<Response> =>
+        fetch(baseUrl + path, {
+            method,
+            headers: buildHeaders(resolvedCsrfToken),
+            body: form,
+            credentials: "include",
+        });
+
+    let res = await executeRequest(csrfToken);
+
+    if (
+        !res.ok &&
+        shouldUseCsrf &&
+        refreshCsrfCookie &&
+        isCsrfError(res.status, (await readErrorDetails(res.clone())).message)
+    ) {
+        await refreshCsrfCookie();
+        csrfToken = readCsrfCookie(csrfCookieName);
+        res = await executeRequest(csrfToken);
+    }
+
+    if (!res.ok) {
+        throw createEntityRequestError(res.status, await readErrorDetails(res));
+    }
+
+    const accessTokenHeader = res.headers.get("X-Access-Token")?.trim() ?? "";
+    const contentType = res.headers.get("Content-Type") ?? "";
+
+    if (contentType.includes("application/octet-stream")) {
+        const key = derivePacketKey(hmacSecret, responsePacketSource);
+        const encryptedBody = await res.arrayBuffer();
+        let decrypted: T;
+        try {
+            decrypted = decryptPacket<T>(encryptedBody, key);
+        } catch (error) {
+            logPacketDecryptError({
+                method,
+                path,
+                withAuth,
+                status: res.status,
+                contentType,
+                responsePacketSource,
+                tokenPresent: !!token,
+                anonymousPacketTokenPresent: !!anonymousPacketToken,
+                hmacEnabled: !!hmacSecret,
+                error,
+            });
+            throw error;
+        }
+        if (accessTokenHeader) {
+            onAccessToken?.(accessTokenHeader);
+        }
+        return decrypted;
+    }
+
+    if (accessTokenHeader) {
+        onAccessToken?.(accessTokenHeader);
+    }
+
+    const data = (await res.json()) as { ok?: boolean; message?: string };
+    if (!data.ok) {
+        const err = new Error(
+            data.message ?? `EntityServer error (HTTP ${res.status})`,
+        );
+        (err as { status?: number }).status = res.status;
+        throw err;
+    }
+    return data as T;
+}

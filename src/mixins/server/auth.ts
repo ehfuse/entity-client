@@ -3,6 +3,7 @@ import type {
     EntityServerClientBase,
 } from "../../client/base.js";
 import { entityRequest } from "../../client/request.js";
+import { sameJwtIdentity } from "../../client/jwt.js";
 
 export interface AuthLoginSuccessData {
     access_token: string;
@@ -97,6 +98,12 @@ export function AuthMixin<TBase extends GConstructor<EntityServerClientBase>>(
                 if (bootstrapAuth) {
                     headers["X-Session-Bootstrap"] = "1";
                 }
+                // 현재 토큰을 함께 보내 서버가 "같은 계정의 refresh 쿠키"일 때만
+                // 세션을 갱신하게 한다 — 같은 도메인 다른 탭 로그인이 남긴 쿠키로
+                // 다른 계정/라이선스의 토큰이 발급되는 것을 서버 단에서 차단.
+                if (previousToken) {
+                    headers["Authorization"] = `Bearer ${previousToken}`;
+                }
 
                 const res = await fetch(`${this.baseUrl}/v1/health`, {
                     signal: AbortSignal.timeout(3000),
@@ -111,9 +118,21 @@ export function AuthMixin<TBase extends GConstructor<EntityServerClientBase>>(
 
                 const accessToken = res.headers.get("X-Access-Token");
                 if (accessToken) {
-                    this.token = accessToken;
-                    if (bootstrapAuth && accessToken !== previousToken) {
-                        this.onTokenRefreshed?.(accessToken, 0);
+                    // 세션 정체성 가드: 기존 토큰이 있으면 같은 계정·라이선스의
+                    // 토큰일 때만 채택한다. 공유 쿠키가 다른 계정 소유로 바뀐 경우
+                    // 조용히 다른 라이선스 데이터가 보이는 사고를 차단.
+                    if (
+                        !previousToken ||
+                        sameJwtIdentity(previousToken, accessToken)
+                    ) {
+                        this.token = accessToken;
+                        if (bootstrapAuth && accessToken !== previousToken) {
+                            this.onTokenRefreshed?.(accessToken, 0);
+                        }
+                    } else {
+                        console.warn(
+                            "[entity-client] 다른 계정 세션의 access token 갱신을 무시합니다 (세션 정체성 가드)",
+                        );
                     }
                 }
 
@@ -268,9 +287,23 @@ export function AuthMixin<TBase extends GConstructor<EntityServerClientBase>>(
                     expires_in: number;
                 };
             }>("POST", "/v1/auth/token_refresh", undefined, false);
-            this.token = data.data.access_token;
-            this.applyCsrfHealth();
+            this.adoptRefreshedAccessToken(data.data.access_token);
             return data.data;
+        }
+
+        /**
+         * 갱신으로 받은 access token 을 세션 정체성 검증 후 채택한다.
+         * 공유 refresh 쿠키가 다른 계정 소유로 바뀐 경우(같은 도메인 다중 로그인)
+         * 다른 계정 토큰이 조용히 채택되는 것을 차단한다.
+         */
+        adoptRefreshedAccessToken(accessToken: string): void {
+            if (this.token && !sameJwtIdentity(this.token, accessToken)) {
+                throw new Error(
+                    "Refreshed access token belongs to a different account session",
+                );
+            }
+            this.token = accessToken;
+            this.applyCsrfHealth();
         }
 
         /** Refresh Token으로 Access Token을 재발급받아 내부 토큰을 교체합니다. */
@@ -295,8 +328,7 @@ export function AuthMixin<TBase extends GConstructor<EntityServerClientBase>>(
                 { refresh_token: refreshToken },
                 false,
             );
-            this.token = data.data.access_token;
-            this.applyCsrfHealth();
+            this.adoptRefreshedAccessToken(data.data.access_token);
             return data.data;
         }
 

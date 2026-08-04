@@ -878,17 +878,18 @@ export class EntityServerClientBase {
         return res.arrayBuffer();
     }
 
-    /** multipart/form-data 요청을 보냅니다. (파일 업로드 등) */
+    /** multipart/form-data 요청을 보냅니다. (파일 업로드 등 — onUploadProgress 지정 시 XHR 로 업로드 진행률 콜백) */
     async requestForm<T>(
         method: string,
         path: string,
         form: FormData,
         withAuth = true,
+        onUploadProgress?: (loaded: number, total: number) => void,
     ): Promise<T> {
         // 패킷 암호화가 켜진 서버는 응답을 octet-stream 으로 암호화해 내려줄 수 있으므로,
         // 일반 요청과 동일한 헤더(X-Debug-Plain/X-Packet-Token/HMAC)와 응답 복호화 처리를 공유한다.
         await this.prepareRequest(withAuth);
-        return requestFormData<T>(this.reqOpts, method, path, form, withAuth);
+        return requestFormData<T>(this.reqOpts, method, path, form, withAuth, onUploadProgress);
     }
 
     /** multipart/form-data 요청을 보내고 바이너리(ArrayBuffer)를 반환합니다. */

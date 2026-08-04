@@ -533,6 +533,56 @@ export async function entityRequest<T>(
     }
 }
 
+/** 업로드 진행률 콜백이다. (loaded/total 은 byte 단위) */
+export type UploadProgressHandler = (loaded: number, total: number) => void;
+
+/**
+ * XHR 로 multipart 를 전송해 업로드 진행률 이벤트를 제공한다.
+ * fetch 는 업로드 진행 이벤트가 없어 진행률이 필요한 호출만 이 경로를 탄다.
+ * 결과는 fetch 와 동일하게 다루도록 표준 `Response` 로 감싸 반환한다.
+ */
+function executeXhrFormRequest(
+    url: string,
+    method: string,
+    headers: Record<string, string>,
+    form: FormData,
+    onUploadProgress: UploadProgressHandler,
+): Promise<Response> {
+    return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open(method, url, true);
+        xhr.withCredentials = true;
+        xhr.responseType = "arraybuffer";
+        for (const [key, value] of Object.entries(headers)) {
+            xhr.setRequestHeader(key, value);
+        }
+        xhr.upload.onprogress = (event) => {
+            if (event.lengthComputable) onUploadProgress(event.loaded, event.total);
+        };
+        xhr.onload = () => {
+            const responseHeaders = new Headers();
+            for (const line of xhr.getAllResponseHeaders().trim().split(/[\r\n]+/)) {
+                const separatorIndex = line.indexOf(": ");
+                if (separatorIndex > 0) {
+                    responseHeaders.append(line.slice(0, separatorIndex), line.slice(separatorIndex + 2));
+                }
+            }
+            // Response 는 204/205/304 에 body 를 허용하지 않는다.
+            const body = [204, 205, 304].includes(xhr.status) ? null : (xhr.response as ArrayBuffer);
+            resolve(
+                new Response(body, {
+                    status: xhr.status,
+                    statusText: xhr.statusText,
+                    headers: responseHeaders,
+                }),
+            );
+        };
+        xhr.onerror = () => reject(new TypeError("Network request failed"));
+        xhr.onabort = () => reject(new DOMException("Aborted", "AbortError"));
+        xhr.send(form);
+    });
+}
+
 /**
  * multipart/form-data(파일 업로드) 요청을 패킷 암호화와 무관하게 보낸다.
  *
@@ -543,6 +593,8 @@ export async function entityRequest<T>(
  *
  * 기존 raw `fetch + res.json()` 방식은 암호화 응답을 복호화하지 못해
  * `Unexpected token '...' is not valid JSON` 으로 깨졌다. (HTTP 200 이어도)
+ *
+ * `onUploadProgress` 를 넘기면 fetch 대신 XHR 로 전송해 업로드 진행률을 콜백으로 알린다.
  */
 export async function requestFormData<T>(
     opts: RequestOptions,
@@ -550,6 +602,7 @@ export async function requestFormData<T>(
     path: string,
     form: FormData,
     withAuth = true,
+    onUploadProgress?: UploadProgressHandler,
 ): Promise<T> {
     const {
         baseUrl,
@@ -604,12 +657,20 @@ export async function requestFormData<T>(
     };
 
     const executeRequest = (resolvedCsrfToken: string): Promise<Response> =>
-        fetch(baseUrl + path, {
-            method,
-            headers: buildHeaders(resolvedCsrfToken),
-            body: form,
-            credentials: "include",
-        });
+        onUploadProgress
+            ? executeXhrFormRequest(
+                  baseUrl + path,
+                  method,
+                  buildHeaders(resolvedCsrfToken),
+                  form,
+                  onUploadProgress,
+              )
+            : fetch(baseUrl + path, {
+                  method,
+                  headers: buildHeaders(resolvedCsrfToken),
+                  body: form,
+                  credentials: "include",
+              });
 
     let res = await executeRequest(csrfToken);
 

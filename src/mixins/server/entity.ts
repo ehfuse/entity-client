@@ -16,12 +16,17 @@ export function EntityMixin<TBase extends GConstructor<EntityServerClientBase>>(
     return class EntityMixinClass extends Base {
         // ─── 트랜잭션 ─────────────────────────────────────────────────────────
 
-        /** 트랜잭션을 시작하고 활성 트랜잭션 ID를 저장합니다. */
+        /**
+         * 트랜잭션을 시작하고 활성 트랜잭션 ID를 저장합니다.
+         *
+         * 인증은 반드시 붙여야 합니다(기본값 withAuth=true). 여기에 false 를 주면 HMAC 서명도
+         * Bearer 토큰도 붙지 않아 ES 가 401 로 거절합니다 — 커밋·롤백과 같은 조건이어야 합니다.
+         */
         async transStart(): Promise<string> {
             const res = await this.request<{
                 ok: boolean;
                 transaction_id: string;
-            }>("POST", "/v1/transaction/start", undefined, false);
+            }>("POST", "/v1/transaction/start");
             this.activeTxId = res.transaction_id;
             return this.activeTxId;
         }

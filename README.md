@@ -141,13 +141,14 @@ const { data } = await client.history("account", seq);
 ### 트랜잭션
 
 ```ts
+// 열기에 실패하면 여기서 예외가 납니다 — 삼키고 진행하면 트랜잭션 없이 쓰기가 커밋됩니다.
 const txId = await client.transStart();
 try {
-    await client.submit("order", { ...orderData, seq: undefined });
+    await client.submit("order", { ...orderData, seq: undefined }, { transactionId: txId });
     await client.submit("order_item", { ...itemData }, { transactionId: txId });
-    await client.transCommit();
+    await client.transCommit(txId);
 } catch (e) {
-    await client.transRollback();
+    await client.transRollback(txId);
 }
 ```
 

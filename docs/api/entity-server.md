@@ -253,6 +253,14 @@ await client.withdraw("current-password");
 const txId = await client.transStart();
 ```
 
+트랜잭션을 열고 `activeTxId` 에 저장합니다. 이후 `submit`·`delete` 는 `transactionId` 를
+따로 넘기지 않아도 이 값을 씁니다.
+
+> **실패를 삼키지 마세요.** `transStart()` 가 실패했는데 예외를 무시하고 `submit` 을 계속 부르면,
+> `activeTxId` 가 비어 있어 각 쓰기가 **트랜잭션 없이 하나씩 즉시 커밋**됩니다. 도중에 실패하면
+> 부분 반영이 그대로 남고, 보상하려고 부른 `transRollback()` 은 `No active transaction` 으로
+> 거부돼 서버에 도달조차 하지 않습니다. 열기에 실패하면 그 자리에서 중단하십시오.
+
 ### transCommit
 
 ```ts

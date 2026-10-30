@@ -164,10 +164,11 @@ export class EntityServerClientBase {
      * CSRF·anon 쿠키 발급과 패킷 암호화 협상(`X-Packet-Encryption`)을 앱 진입 즉시 선반영해,
      * 프런트 라우트(`/login` 등)와 무관하게 항상 health 가 최소 1회 돌도록 보장한다.
      *
-     * keepSession 이면 이 첫 health 를 세션 되살리기(`X-Session-Bootstrap`)로 보내고, 첫 인증 요청의
-     * 세션 부트스트랩(ensureAuthenticatedRequestBootstrap)이 이 결과를 그대로 쓴다 — 예전에는 첫 health 와
-     * 부트스트랩 health 가 따로 나가 새로고침마다 health 가 두 번 돌았다(1.0.33).
-     * (keepSession 은 마이크로태스크에서 읽는다 — 생성 직후 configure 로 켠 값도 따른다.)
+     * 이 첫 health 를 세션 되살리기(`X-Session-Bootstrap` — ensureAuthenticatedRequestBootstrap)로 보내고,
+     * 첫 인증 요청의 세션 부트스트랩이 이 결과를 그대로 쓴다 — 예전에는 첫 health 와 부트스트랩 health 가
+     * 따로 나가 새로고침마다 health 가 두 번 돌았다(1.0.33 keepSession 만 → 1.0.34 모두: 첫 인증 요청 앞의
+     * 부트스트랩은 keepSession 과 상관없이 돌았으니 같은 일이다). 서버 대 서버(apiKey + hmac)는 부트스트랩이 없어 예전 health.
+     * 앱이 세션 복원에서 health 를 부를 때도 checkHealth(true) 대신 ensureAuthenticatedRequestBootstrap() 을 부르면 이것과 합쳐진다.
      *
      * @internal
      */
@@ -182,8 +183,9 @@ export class EntityServerClientBase {
         };
         if (typeof self.checkHealth !== "function") return;
         Promise.resolve().then(() => {
+            const serverToServer = Boolean(this.apiKey && this.hmacSecret);
             const run =
-                this.keepSession && typeof self.ensureAuthenticatedRequestBootstrap === "function"
+                !serverToServer && typeof self.ensureAuthenticatedRequestBootstrap === "function"
                     ? self.ensureAuthenticatedRequestBootstrap()
                     : self.checkHealth!(false);
             return Promise.resolve(run).catch(() => {});

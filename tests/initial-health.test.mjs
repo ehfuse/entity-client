@@ -37,7 +37,7 @@ test("keepSession: initial health doubles as session bootstrap (one health befor
     }
 });
 
-test("without keepSession: initial health stays a plain health", async () => {
+test("without keepSession: initial health is also the session bootstrap (1.0.34)", async () => {
     const originalFetch = globalThis.fetch;
     const originalDocument = globalThis.document;
     globalThis.document = { cookie: "" };
@@ -47,12 +47,15 @@ test("without keepSession: initial health stays a plain health", async () => {
         return new Response(JSON.stringify({ status: "ok", authenticated: false }), { status: 200, headers: { "Content-Type": "application/json" } });
     };
     try {
-        new EntityServerApi({ baseUrl: "https://example.com" });
+        const client = new EntityServerApi({ baseUrl: "https://example.com" });
         await tick();
         await tick();
+        // 앱의 세션 복원이 부르는 길 — 이미 끝난 첫 health 를 쓴다
+        await client.ensureAuthenticatedRequestBootstrap();
+        await client.get("/v1/auth/me").catch(() => undefined);
         const health = calls.filter((c) => c.path === "/v1/health");
-        assert.equal(health.length, 1);
-        assert.equal(health[0].boot, "");
+        assert.equal(health.length, 1, JSON.stringify(calls));
+        assert.equal(health[0].boot, "1");
     } finally {
         globalThis.fetch = originalFetch;
         globalThis.document = originalDocument;

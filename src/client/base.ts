@@ -164,6 +164,11 @@ export class EntityServerClientBase {
      * CSRF·anon 쿠키 발급과 패킷 암호화 협상(`X-Packet-Encryption`)을 앱 진입 즉시 선반영해,
      * 프런트 라우트(`/login` 등)와 무관하게 항상 health 가 최소 1회 돌도록 보장한다.
      *
+     * keepSession 이면 이 첫 health 를 세션 되살리기(`X-Session-Bootstrap`)로 보내고, 첫 인증 요청의
+     * 세션 부트스트랩(ensureAuthenticatedRequestBootstrap)이 이 결과를 그대로 쓴다 — 예전에는 첫 health 와
+     * 부트스트랩 health 가 따로 나가 새로고침마다 health 가 두 번 돌았다(1.0.33).
+     * (keepSession 은 마이크로태스크에서 읽는다 — 생성 직후 configure 로 켠 값도 따른다.)
+     *
      * @internal
      */
     fireInitialHealth(): void {
@@ -173,9 +178,16 @@ export class EntityServerClientBase {
         this.initialHealthFired = true;
         const self = this as unknown as {
             checkHealth?: (bootstrapAuth?: boolean) => Promise<unknown>;
+            ensureAuthenticatedRequestBootstrap?: () => Promise<void>;
         };
         if (typeof self.checkHealth !== "function") return;
-        Promise.resolve().then(() => self.checkHealth!(false).catch(() => {}));
+        Promise.resolve().then(() => {
+            const run =
+                this.keepSession && typeof self.ensureAuthenticatedRequestBootstrap === "function"
+                    ? self.ensureAuthenticatedRequestBootstrap()
+                    : self.checkHealth!(false);
+            return Promise.resolve(run).catch(() => {});
+        });
     }
 
     /** 인증 요청에 사용할 JWT Access Token을 설정합니다. */

@@ -48,6 +48,9 @@ interface EntityErrorDetails {
     body?: EntityErrorBody;
 }
 
+/** 네트워크 오류로 읽기 요청을 다시 보내기 전 기다리는 시간 — 폰이 연결을 되살릴 짬 */
+const NETWORK_RETRY_DELAY_MS = 600;
+
 // isAutoAbortableMethod는 기본 자동 취소 키를 허용하는 쓰기 메서드인지 확인합니다.
 function isAutoAbortableMethod(method: string): boolean {
     switch (method.toUpperCase()) {
@@ -425,7 +428,7 @@ export async function entityRequest<T>(
         csrfToken = readCsrfCookie(csrfCookieName);
     }
 
-    const executeRequest = (resolvedCsrfToken: string): Promise<Response> =>
+    const sendOnce = (resolvedCsrfToken: string): Promise<Response> =>
         fetch(baseUrl + path, {
             method,
             headers: buildHeaders(resolvedCsrfToken),
@@ -435,6 +438,23 @@ export async function entityRequest<T>(
             credentials: "include",
             signal,
         });
+    // 읽기 요청(GET · HEAD)은 서버에 닿지 못한 네트워크 오류("Failed to fetch")면 잠깐 뒤 한 번 더 보낸다.
+    // 폰 앱이 백그라운드에서 돌아오는 순간 · Wi-Fi ↔ 데이터 전환 순간에 첫 요청이 끊겨, 다시 보내면 되는 요청이
+    // 오류 창으로 떴다(2026-11-04 업무함 메일 딥링크). 쓰기 요청은 서버가 받았는지 몰라 다시 보내지 않는다. 취소한 요청도 그대로 둔다.
+    const executeRequest = async (resolvedCsrfToken: string): Promise<Response> => {
+        try {
+            return await sendOnce(resolvedCsrfToken);
+        } catch (error) {
+            const retryable =
+                (method.toUpperCase() === "GET" || method.toUpperCase() === "HEAD") &&
+                error instanceof TypeError &&
+                !signal?.aborted;
+            if (!retryable) throw error;
+            await new Promise((done) => setTimeout(done, NETWORK_RETRY_DELAY_MS));
+            if (signal?.aborted) throw error;
+            return sendOnce(resolvedCsrfToken);
+        }
+    };
 
     try {
         let res = await executeRequest(csrfToken);

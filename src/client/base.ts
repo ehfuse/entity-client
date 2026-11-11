@@ -9,6 +9,10 @@ import type {
 import { readEnv } from "./utils.js";
 import { derivePacketKey, parseRequestBody } from "./packet.js";
 import {
+    DEFAULT_HMAC_SIGNATURE_VERSION,
+    type HmacSignatureVersion,
+} from "./hmac.js";
+import {
     entityRequest,
     requestFormData,
     type EntityRequestConfig,
@@ -26,6 +30,8 @@ export class EntityServerClientBase {
     anonymousPacketToken: string;
     apiKey: string;
     hmacSecret: string;
+    /** HMAC 서명 판(기본 2). 판 2 를 모르는 엔티티 서버와 붙이면 1 — `client/hmac.ts` 참고. */
+    signatureVersion: HmacSignatureVersion;
     encryptRequests: boolean;
     /** dev 디버그 평문 시크릿. 설정 시 요청을 평문 전송하고 `X-Debug-Plain` 헤더를 보낸다. */
     debugPlainSecret: string;
@@ -77,6 +83,10 @@ export class EntityServerClientBase {
         this.anonymousPacketToken = options.anonymousPacketToken ?? "";
         this.apiKey = options.apiKey ?? "";
         this.hmacSecret = options.hmacSecret ?? "";
+        this.signatureVersion =
+            options.signatureVersion === 1 || options.signatureVersion === 2
+                ? options.signatureVersion
+                : DEFAULT_HMAC_SIGNATURE_VERSION;
         this.encryptRequests = options.encryptRequests ?? false;
         this.debugPlainSecret = options.debugPlainSecret ?? "";
         this.csrfEnabled = options.csrfEnabled ?? false;
@@ -132,6 +142,8 @@ export class EntityServerClientBase {
         if (typeof options.apiKey === "string") this.apiKey = options.apiKey;
         if (typeof options.hmacSecret === "string")
             this.hmacSecret = options.hmacSecret;
+        if (options.signatureVersion === 1 || options.signatureVersion === 2)
+            this.signatureVersion = options.signatureVersion;
         if (typeof options.keepSession === "boolean")
             this.keepSession = options.keepSession;
         if (typeof options.refreshBuffer === "number")
@@ -701,6 +713,7 @@ export class EntityServerClientBase {
             anonymousPacketToken: this.anonymousPacketToken,
             apiKey: this.apiKey,
             hmacSecret: this.hmacSecret,
+            signatureVersion: this.signatureVersion,
             encryptRequests: this.encryptRequests,
             csrfEnabled: this.csrfEnabled,
             csrfHeaderName: this.csrfHeaderName,

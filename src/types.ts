@@ -291,6 +291,15 @@ export interface EntityServerClientOptions {
      * **서버 사이드(Node.js 등) 전용. 브라우저에서는 사용하지 마세요.**
      */
     hmacSecret?: string;
+    /**
+     * HMAC 서명 판. 기본 `2`.
+     *
+     * - `2`: `METHOD|PATH|TIMESTAMP|NONCE|<X-License-Seq>|<X-Account-Seq>|BODY` 를 서명하고 `X-Signature-Version: 2` 를 보냅니다.
+     *   범위 머리(X-License-Seq · X-Account-Seq)를 바꿔 다시 보내는 요청을 서버가 거절할 수 있게 합니다.
+     * - `1`: 예전 서명(`METHOD|PATH|TIMESTAMP|NONCE|BODY`). **판 2 를 모르는 엔티티 서버와 붙일 때** 씁니다 —
+     *   그런 서버는 판 2 서명을 판 1 로 검증해 401 을 돌려줍니다.
+     */
+    signatureVersion?: 1 | 2;
 }
 
 // ─── SMTP ─────────────────────────────────────────────────────────────────────

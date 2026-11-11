@@ -60,6 +60,7 @@ const client = new EntityServerApi({
     baseUrl: "https://api.example.com", // 기본값: VITE_ENTITY_SERVER_URL 환경변수
     token: "access_token",
     hmacSecret: "secret", // HMAC 서명 활성화
+    signatureVersion: 1, // HMAC 서명 판(기본 1). 판 2 를 받는 엔티티 서버면 2 — X-License-Seq · X-Account-Seq 까지 서명
     encryptRequests: true, // 요청 바디 패킷 암호화
     csrfEnabled: true, // CSRF 토큰 자동 갱신
     keepSession: true, // access_token 만료 전 자동 갱신

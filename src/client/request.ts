@@ -1,5 +1,5 @@
 import { derivePacketKey, encryptPacket, decryptPacket } from "./packet.js";
-import { buildHmacHeaders } from "./hmac.js";
+import { buildHmacHeaders, type HmacSignatureVersion } from "./hmac.js";
 
 export interface RequestOptions {
     baseUrl: string;
@@ -20,6 +20,8 @@ export interface RequestOptions {
      * 서버도 해당 요청/응답을 평문으로 처리한다(패킷 암호화 우회).
      */
     debugPlainSecret?: string;
+    /** HMAC 서명 판(기본 2 — `client/hmac.ts`). 판 2 를 모르는 엔티티 서버와 붙이면 1. */
+    signatureVersion?: HmacSignatureVersion;
 }
 
 export interface EntityRequestConfig {
@@ -408,6 +410,9 @@ export async function entityRequest<T>(
         if (shouldUseCsrf && resolvedCsrfToken) {
             headers[csrfHeaderName] = resolvedCsrfToken;
         }
+        // 서명은 맨 마지막 — 판 2 는 위에서 정한 X-License-Seq · X-Account-Seq(extraHeaders) 값을 서명 글에 넣는다.
+        // 이 뒤로 범위 머리를 바꾸면 엔티티 서버가 401 로 거절한다(보안 점검 2026-11-11 후속 4).
+        // 재시도(nonce 재사용 · CSRF 갱신 · 네트워크 오류)는 이 함수를 다시 불러 새 nonce 로 다시 서명한다.
         if (isHmacMode) {
             const bodyBytes =
                 fetchBody instanceof Uint8Array
@@ -417,7 +422,15 @@ export async function entityRequest<T>(
                       : new Uint8Array(0);
             Object.assign(
                 headers,
-                buildHmacHeaders(method, path, bodyBytes, apiKey, hmacSecret),
+                buildHmacHeaders(
+                    method,
+                    path,
+                    bodyBytes,
+                    apiKey,
+                    hmacSecret,
+                    headers,
+                    opts.signatureVersion,
+                ),
             );
         }
         return headers;
